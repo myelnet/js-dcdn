@@ -1,0 +1,7 @@
+.DS_STORE
+node_modules
+build/
+*.swp
+*.swo
+
+packages/myel-client/dist
