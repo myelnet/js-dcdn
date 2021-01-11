@@ -18,7 +18,7 @@ export const posts = [
       // 'http://localhost:5420/ipfs/bafykbzaceaydeik6i5etcqormkid2sn7bxo3wknnj4psa2s7cfip2yhvbcu24/Project/shipping-container.jpeg',
       FrogsCover,
     excerpt:
-      'Learn more about Myel, a community powered content delivery network, as I guide you through a simple blog example. I will also explore the different parts of our system and where we are on the roadmap.',
+      'Learn more about Myel, a community powered content delivery network, as I guide you through hosting a simple blog on Myel.',
     date: '2021-01-07T05:35:07.322Z',
     author: {
       name: 'T. Chardin',
@@ -93,7 +93,7 @@ Thanks for reading!
     title: 'Optimal Content Allocation on the Myel network',
     coverImage: NeuronsCover,
     excerpt:
-      'With an infinite influx of content and limited amount of storage, Myel nodes must decide how to allocate and replicate content with their peers. Here we introduce the content distribution system behind the Myel network',
+      'With an infinite influx of content and limited amount of storage, Myel nodes must decide how to best allocate and replicate content with their peers. Here we introduce the content distribution system behind the Myel network.',
     date: '2020-01-09T05:35:07.322Z',
     author: {
       name: 'A. Camuto',
