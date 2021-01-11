@@ -127,7 +127,7 @@ But lets say your starting a new project, and you don't have a lot of users just
 
 To achieve this we'll always ensure Myel peers have some free hard-drive space to onboard new applications to the network. We distribute your content to peers that have a good 'reputation' first. These are peers that have been online consistently and have good hardware so they can deliver content quickly. 
 
-At first we distribute your content across the globe, and with maximum redundancy, as you might not know where your future user base lies ! As more and more users start requesting your content, becoming peers themselves, we start to collect statistics on who, what and where your content is going. If your users are mainly in Japan, we'll ensure redundancy  beyond your user-base by allocating your content to high-reputation Myel users in Japan. This way you have a solid and reliable base-load of points of presence close to your users.  
+At first we distribute your content across the globe, and with maximum redundancy, as you might not know where your future user base lies! As more and more users start requesting your content, becoming peers themselves, we start to collect statistics on who, what and where your content is going. If your users are mainly in Japan, we'll ensure redundancy beyond your user-base by allocating your content to high-reputation Myel users in Japan. This way you have a solid and reliable base-load of points of presence close to your users.  
 
 When you push new content, we'll prioritize allocating it to this reliable baseload first, as we know it'll be close to your existing user-base. 
 
