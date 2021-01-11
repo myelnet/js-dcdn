@@ -109,7 +109,7 @@ To surpass the performance of existing centralized CDNs, the Myel network requir
 
 ### What Challenges ?
 
-In a centralized model, you pay a CDN provider a fixed monthly rate and they will allocate your content to a few of their points of presence. Therse are typically in large cities like London or New York, from which they cache and serve your content. There are not a ton of places to choose from, and picking where to allocate content is relatively straight-forward. If your user base is mainly French, then caching content within a CDN's Paris point of presence makes the most sense. 
+In a centralized model, you pay a CDN provider a fixed monthly rate and they will allocate your content to a few of their points of presence. These are typically in large cities like London or New York, from which they cache and serve your content. There are not a ton of places to choose from, and picking where to allocate content is relatively straight-forward. If your user base is mainly French, then caching content within a CDN's Paris point of presence makes the most sense. 
 
 In the Myel world, the network points of presence are dynamic. They can turn on and off at a whim. Someone can shut their laptop for the night or their wifi can go down. 
 
