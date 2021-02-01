@@ -1,7 +1,6 @@
 import FrogsCover from './assets/frogcover.jpeg';
 import NeuronsCover from './assets/neurons.jpeg';
 import KnobCover from './assets/knob.jpeg';
-import EconModel from './assets/model.gif';
 
 const placeholder = `
 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Praesent elementum facilisis leo vel fringilla est ullamcorper eget. At imperdiet dui accumsan sit amet nulla facilities morbi tempus. Praesent elementum facilisis leo vel fringilla. Congue mauris rhoncus aenean vel. Egestas sed tempus urna et pharetra pharetra massa massa ultricies.
@@ -86,7 +85,7 @@ Providers earn roughly 304USD a year and the network yield roughly 4204.8USD.
 
 Below we show a simulation for these values, but where $N=200$ and $p=0.1$  - so as to not clutter the network visualisation.  Black Nodes represent network providers, red nodes are peers that are active on a given day, and grey nodes are offline peers
 
-  ![Simulation rendering](${EconModel})
+  ![Simulation rendering](https://media.githubusercontent.com/media/myelnet/myel.js/dev/examples/react-blog-starter/src/assets/model.gif)
     `,
   },
   {
