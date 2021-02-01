@@ -50,7 +50,7 @@ $$\\mathrm{daily\\_providers} \ \\cap \\mathrm{daily\\_users}  = d \\times p \\t
 
 ### Content Transmission
 
-Ok cool -- we've now established the different types of actors on the Myel network. We now need to make assumptions as to how content is transmitted. We assume that we have a population of users that have locations that are distributed equally across a square area. 
+We've now established the different types of actors on the Myel network. We now need to make assumptions as to how content is transmitted. We assume that we have a population of users that have locations that are distributed equally across a square area. 
 
 $$\\mathrm{location} \\sim \\mathrm{Uniform(\\mathrm{square})}$$. 
 
@@ -58,7 +58,7 @@ We now assume that application users get their content from the nearest provider
 
 $$\\mathrm{daily\\_users\\_per\\_provider}=\\frac{\\mathrm{daily\\_users} - \\mathrm{daily\\_providers} \ \\cap \\mathrm{daily\\_users}}{\\mathrm{daily\\_providers}}=\\frac{d(1-p)}{m\\times p}$$ 
 
-Lets say the payload of the app is $$M$$ bytes, and we have a $$\mathrm{price}$$ per byte delivered (in FIL or USD). 
+Lets say the payload of the app is $$M$$ bytes, and we have a $$\\mathrm{price}$$ per byte delivered (in FIL or USD). 
 
 Each provider earns on average per day: 
 
@@ -76,7 +76,7 @@ There’s a number of factors here we can’t control as the designers of the ne
 
 As $$p$$ increases we can assume that performance of the network increases, there are more providers to serve content quickly to users, but the returns per provider and for the network as a whole decrease ! Thus, given a fixed agreed upon $$\\mathrm{price}$$, controlling $$p$$ is where we can have the most impact -- carefully balancing and fine-tuning network performance against strong earnings for both the network and for individual providers. As a concrete example consider the case where all users are providers, $$p=1$$. Because all users already have the content, there are no bytes to be delivered, and no one earns anything !
 
-This kind of modelling will be critical as we role out the network and need to make informed decisions on controlling $$p$$. We’ll start rolling out more sophisticated models where we assume more complex location distributions, and as we gather data on the network we can also model network performance as a function of $$p$$.
+This kind of modelling will be critical as we roll out the network and need to make informed decisions on controlling $$p$$. We’ll start shipping more sophisticated models where we assume more complex location distributions, and as we gather data on the network we can also model network performance as a function of $$p$$.
 
 ### Simulations
 
