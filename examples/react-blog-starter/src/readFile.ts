@@ -2,6 +2,12 @@
 import {unstable_getCacheForType} from 'react';
 import remark from 'remark';
 import html from 'remark-html';
+import math from 'remark-math';
+import katex from 'rehype-katex';
+import unified from 'unified';
+import remark2rehype from 'remark-rehype';
+import stringify from 'rehype-stringify';
+import markdown from 'remark-parse';
 
 interface Wakeable {
   then(onFulfill: () => any, onReject: () => any): void | Wakeable;
@@ -88,7 +94,19 @@ export function readFile(
   const map = unstable_getCacheForType(createReadFileMap);
   let record = map.get(path);
   if (!record) {
-    const thenable = remark().use(html).process(path);
+    const thenable = new Promise((resolve, reject) => {
+      unified()
+        .use(markdown)
+        .use(math)
+        .use(remark2rehype)
+        .use(katex)
+        .use(stringify)
+        .process(path, function (err, file) {
+          if (err) reject(err);
+          resolve(file);
+        });
+    });
+    // remark().use(html).use(math).use(katex).process(path);
     // @ts-ignore
     record = createRecordFromThenable(thenable);
     map.set(path, record);
