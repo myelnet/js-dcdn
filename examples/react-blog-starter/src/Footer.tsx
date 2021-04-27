@@ -7,7 +7,7 @@ export default function Footer() {
         <div className="footer-content">
           <h3>Content provided on Myel Network</h3>
           <div>
-            <a className="footer-link" href="#">
+            <a className="footer-link" href="https://github.com/myelnet">
               View on GitHub
             </a>
           </div>
