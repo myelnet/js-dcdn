@@ -92,6 +92,8 @@ select {
   --bg-color: #FFFFFF;
   --text-color: rgba(0, 0, 0, 0.95);
   --footer-bg: #ecf0f3;
+  --quote-color: #6a737d;
+  --quote-border-color: #dfe2e5;
 }
 
 .dark {
@@ -154,6 +156,12 @@ pre,
 code {
   font-family: var(--monospace);
   border-radius: 6px;
+}
+
+blockquote {
+  padding: 0 1em;
+  color: var(--quote-color);
+  border-left: 0.25em solid var(--quote-border-color);
 }
 
 a {
