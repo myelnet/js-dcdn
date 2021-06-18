@@ -1,8 +1,6 @@
-import CID from 'cids';
-
 type TxOptions = {
   endpoint: string;
-  root: CID;
+  root: string;
 };
 
 export function Tx(options: TxOptions) {
@@ -14,7 +12,7 @@ Tx.prototype.put = function (key: string, value: any) {
   this.entries.set(key, value);
 };
 
-Tx.prototype.commit = async function (): Promise<CID> {
+Tx.prototype.commit = async function (): Promise<string> {
   const body = new FormData();
 
   for (let [key, value] of this.entries) {
@@ -26,5 +24,5 @@ Tx.prototype.commit = async function (): Promise<CID> {
     body,
   });
   const rootCID = response.headers.get('Ipfs-Hash');
-  return new CID(rootCID);
+  return rootCID;
 };

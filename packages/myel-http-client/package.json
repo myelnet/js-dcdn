@@ -1,6 +1,6 @@
 {
-  "name": "myel-client",
-  "description": "Typescript package for consuming content from the Myel network",
+  "name": "myel-http-client",
+  "description": "Typescript package for consuming content from a myel node via HTTP",
   "version": "0.1.0",
   "main": "dist/myel-client.cjs.js",
   "module": "dist/myel-client.esm.js",
@@ -14,8 +14,5 @@
     "rollup": "^2.35.1",
     "tslib": "^2.0.3",
     "typescript": "^4.1.3"
-  },
-  "peerDependencies": {
-    "cids": "^1.1.7"
   }
 }
