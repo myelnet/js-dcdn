@@ -9,8 +9,6 @@ import Download from './Download';
 import Spinner from './Spinner';
 import {Tx, Entry} from 'myel-http-client';
 
-const MYEL_EP = 'http://localhost:2001';
-
 type Input = {
   type: string;
   id: string;
@@ -32,10 +30,16 @@ const inputType = atom({
   default: 'string',
 });
 
+const gatewayEndpoint = atom({
+  key: 'GatewayEndpoint',
+  default: 'https://myel.cloud',
+});
+
 type DeleteProps = {
   onDelete: () => void;
 };
 
+// Delete is a simple CSS based cross delete button
 function Delete({onDelete}: DeleteProps) {
   return <div className={styles.delete} onClick={onDelete} />;
 }
@@ -51,8 +55,10 @@ type StringRowProps = RowProps &
   DeleteProps & {
     value: string;
     onChange: (val: string) => void;
+    deletable?: boolean;
   };
 
+// Row associates a label with some children in a horizontal fashion
 function Row({id, isFirst, isLast, children}: RowProps) {
   return (
     <div
@@ -70,6 +76,10 @@ function Row({id, isFirst, isLast, children}: RowProps) {
   );
 }
 
+// StringRow is horizontal string input, which features a delete action
+// the delete action can be disabled with the deletable prop
+// `id` is used as the label of the field and `isFirst` and `isLast` props
+// determine the spacing at the top and bottom when groupped with other fields.
 function StringRow({
   id,
   isFirst,
@@ -77,10 +87,15 @@ function StringRow({
   value,
   onChange,
   onDelete,
+  deletable,
 }: StringRowProps) {
   return (
     <Row id={id} isFirst={isFirst} isLast={isLast}>
-      <div className={styles.stringItems}>
+      <div
+        className={[
+          styles.stringItems,
+          deletable ? styles.stringItemsDeletable : '',
+        ].join(' ')}>
         <div className={styles.input}>
           <input
             id={id}
@@ -91,7 +106,7 @@ function StringRow({
             onChange={(e) => onChange(e.target.value)}
           />
         </div>
-        <Delete onDelete={onDelete} />
+        {deletable && <Delete onDelete={onDelete} />}
       </div>
     </Row>
   );
@@ -103,6 +118,9 @@ type FileRowProps = RowProps &
     onChange: (val: File) => void;
   };
 
+// FileRow is a horizontal file input featuring a preview for image files
+// as well as a delete action. `id` is the label prop and `isFirst` and `isLast` can
+// be used to tune the spacing when groupping with other row fields.
 function FileRow({
   id,
   isFirst,
@@ -142,11 +160,15 @@ function FileRow({
   );
 }
 
-type TxModuleProps = {
+type UploadModuleProps = {
   onCommit: (entries: Input[]) => Promise<void>;
 };
 
-function TxModule({onCommit}: TxModuleProps) {
+// UploadModule combines a custom number of put operations into a transaction
+// and commits it to be cached on a Myel node. It collects all the inputs and commits them
+// then when finished triggers the onCommit callback with the root CID of the transaction.
+// The state of the module is then reset to allow creating the next transaction.
+function UploadModule({onCommit}: UploadModuleProps) {
   const [inputs, setInputs] = useRecoilState(stagedInputs);
   const [key, setKey] = useRecoilState(keyName);
   const [type, setInputType] = useRecoilState(inputType);
@@ -168,7 +190,7 @@ function TxModule({onCommit}: TxModuleProps) {
           <MyelIcon />
         </div>
         <div className={styles.titleLogo}>
-          <div className={styles.titleBarTitle}>New Transaction</div>
+          <div className={styles.titleBarTitle}>Upload</div>
         </div>
         <div className={styles.titleAccessory} />
       </div>
@@ -199,6 +221,7 @@ function TxModule({onCommit}: TxModuleProps) {
                     onDelete={() =>
                       setInputs(inputs.slice(0, i).concat(inputs.slice(i + 1)))
                     }
+                    deletable
                   />
                 );
               case 'file':
@@ -292,6 +315,64 @@ function TxModule({onCommit}: TxModuleProps) {
   );
 }
 
+type DownloadModuleProps = {
+  onDownload: (root: string) => void;
+};
+
+// DownloadModule features a simple input for a root CID, it then sends the root up
+// into the onDownload callback. When triggering the retrieval operation, it provides feedback
+// on this operation until successful or failed.
+function DownloadModule({onDownload}: DownloadModuleProps) {
+  const [root, setRoot] = useState('');
+  const canRetrieve = !!root;
+  const retrieve = () => {
+    onDownload(root);
+    setRoot('');
+  };
+  return (
+    <div className={styles.module}>
+      <div className={styles.titleBar}>
+        <div className={styles.titleAccessory}>
+          <MyelIcon />
+        </div>
+        <div className={styles.titleLogo}>
+          <div className={styles.titleBarTitle}>Download</div>
+        </div>
+        <div className={styles.titleAccessory} />
+      </div>
+      <div className={styles.panel}>
+        <div className={styles.ctrlContainer}>
+          <div className={styles.inputRow}>
+            <div className={styles.bbLeft}>
+              <div className={[styles.input, styles.keyInput].join(' ')}>
+                <input
+                  id="rootCID"
+                  type="text"
+                  value={root}
+                  autoComplete="off"
+                  spellCheck="false"
+                  placeholder="root CID"
+                  onChange={(e) => setRoot(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className={styles.submitRow}>
+        <button
+          className={[styles.btn, canRetrieve ? '' : styles.btnDisabled].join(
+            ' '
+          )}
+          disabled={!canRetrieve}
+          onClick={retrieve}>
+          Query
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const imageReg = /[\/.](gif|jpg|jpeg|tiff|png)$/i;
 
 type ValueDisplayProps = {
@@ -303,34 +384,39 @@ type ValueDisplayProps = {
 
 const txValue = selectorFamily<string, ValueDisplayProps>({
   key: 'TxValue',
-  get: (props) => async () => {
-    if (!props.load || props.name.includes('.')) {
-      return '';
-    }
-    const value = await fetch(
-      MYEL_EP + '/' + props.root + '/' + props.name
-    ).then((res) => res.text());
-    return value;
-  },
+  get:
+    (props) =>
+    async ({get}) => {
+      if (!props.load || props.name.includes('.')) {
+        return '';
+      }
+      const endpoint = get(gatewayEndpoint);
+      const value = await fetch(
+        endpoint + '/' + props.root + '/' + props.name
+      ).then((res) => res.text());
+      return value;
+    },
 });
 
 function ValueDisplay(props: ValueDisplayProps) {
   const {root} = props;
   const [load, setLoad] = useState(false);
+  const endpoint = useRecoilValue(gatewayEndpoint);
   const value = useRecoilValue(txValue({...props, load}));
   return load ? (
     imageReg.test(value) ? (
       <div
         className={styles.imgPreview}
         style={{
-          backgroundImage: `url(${MYEL_EP}/${root}/${value})`,
+          backgroundImage: `url(${endpoint}/${root}/${value})`,
         }}
       />
     ) : (
       <div className={[styles.input, styles.inputImmut].join(' ')}>{value}</div>
     )
   ) : (
-    <div className={styles.stringItems}>
+    <div
+      className={[styles.stringItems, styles.stringItemsDeletable].join(' ')}>
       <div className={[styles.input, styles.inputImmut].join(' ')}>
         {shortenCid(props.value)}
       </div>
@@ -343,10 +429,13 @@ function ValueDisplay(props: ValueDisplayProps) {
 
 const txEntries = selectorFamily<Entry[], string>({
   key: 'TxEntries',
-  get: (root) => async () => {
-    const entries = await new Tx({endpoint: MYEL_EP, root}).getEntries();
-    return entries.filter((entry) => !entry.key.includes('.'));
-  },
+  get:
+    (root) =>
+    async ({get}) => {
+      const endpoint = get(gatewayEndpoint);
+      const entries = await new Tx({endpoint, root}).getEntries();
+      return entries.filter((entry) => !entry.key.includes('.'));
+    },
 });
 
 const shortenCid = (cid: string): string => {
@@ -399,11 +488,57 @@ function FrozenTxModule({cid}: FrozenTxProps) {
   );
 }
 
+function NodeSettingsModule() {
+  const [endpoint, setEndpoint] = useRecoilState(gatewayEndpoint);
+  const [stagedep, setStagedep] = useState(endpoint);
+
+  const canUpdate = stagedep !== endpoint;
+  return (
+    <div className={styles.module}>
+      <div className={styles.titleBar}>
+        <div className={styles.titleAccessory}>
+          <MyelIcon />
+        </div>
+        <div className={styles.titleLogo}>
+          <div className={styles.titleBarTitle}>Settings</div>
+        </div>
+        <div className={styles.titleAccessory} />
+      </div>
+      <div className={styles.panel}>
+        <div className={styles.ctrlContainer}>
+          <StringRow
+            id="endpoint"
+            isFirst
+            isLast
+            value={stagedep}
+            onChange={(v) => {
+              setStagedep(v);
+            }}
+            onDelete={() => {}}
+          />
+        </div>
+      </div>
+      <div className={styles.submitRow}>
+        <button
+          className={[styles.btn, canUpdate ? '' : styles.btnDisabled].join(
+            ' '
+          )}
+          disabled={!canUpdate}
+          onClick={() => setEndpoint(stagedep)}>
+          Update
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [txs, setTxs] = useState<string[]>([]);
+  const [dltxs, setDltxs] = useState<string[]>([]);
+  const endpoint = useRecoilValue(gatewayEndpoint);
 
   const handleCommit = async (entries: Input[]) => {
-    const tx = new Tx({endpoint: 'http://localhost:2001'});
+    const tx = new Tx({endpoint});
 
     entries.forEach((entry) => {
       if (entry.value instanceof File) {
@@ -424,12 +559,25 @@ export default function Home() {
   return (
     <div className={styles.container}>
       <main className={styles.main}>
-        <TxModule onCommit={handleCommit} />
-        {txs.map((tx) => (
-          <Suspense fallback={null} key={tx}>
-            <FrozenTxModule key={tx} cid={tx} />
-          </Suspense>
-        ))}
+        <div className={styles.col}>
+          <NodeSettingsModule />
+        </div>
+        <div className={styles.col}>
+          <UploadModule onCommit={handleCommit} />
+          {txs.map((tx) => (
+            <Suspense fallback={null} key={tx}>
+              <FrozenTxModule key={tx} cid={tx} />
+            </Suspense>
+          ))}
+        </div>
+        <div className={styles.col}>
+          <DownloadModule onDownload={(root) => setDltxs([...dltxs, root])} />
+          {dltxs.map((tx) => (
+            <Suspense fallback={null} key={tx}>
+              <FrozenTxModule key={tx} cid={tx} />
+            </Suspense>
+          ))}
+        </div>
       </main>
 
       <footer className={styles.footer}>

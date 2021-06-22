@@ -11,7 +11,13 @@
 .main {
   height: 100%;
   padding: 5rem 0;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 280px 280px 280px;
+  grid-gap: 16px;
+  align-items: start;
+}
+
+.col {
   display: flex;
   flex-direction: column;
 }
@@ -319,10 +325,13 @@
 
 .stringItems {
   position: relative;
+  align-items: center;
+}
+
+.stringItemsDeletable {
   display: grid;
   grid-template-columns: auto 20px;
   column-gap: 7px;
-  align-items: center;
 }
 
 .imgPreview {
