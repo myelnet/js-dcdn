@@ -1,11 +1,15 @@
-import React, {useState} from 'react';
-import {atom, useRecoilState} from 'recoil';
+import React, {useState, Suspense} from 'react';
+import {atom, selectorFamily, useRecoilState, useRecoilValue} from 'recoil';
 import {useDropzone} from 'react-dropzone';
 import styles from './App.module.css';
 import MyelIcon from './MyelIcon';
 import Caret from './Caret';
 import Clipboard from './Clipboard';
+import Download from './Download';
 import Spinner from './Spinner';
+import {Tx, Entry} from 'myel-http-client';
+
+const MYEL_EP = 'http://localhost:2001';
 
 type Input = {
   type: string;
@@ -138,13 +142,25 @@ function FileRow({
   );
 }
 
-function TxModule() {
+type TxModuleProps = {
+  onCommit: (entries: Input[]) => Promise<void>;
+};
+
+function TxModule({onCommit}: TxModuleProps) {
   const [inputs, setInputs] = useRecoilState(stagedInputs);
   const [key, setKey] = useRecoilState(keyName);
   const [type, setInputType] = useRecoilState(inputType);
 
+  const [pending, setPending] = useState(false);
+
   const canCommit = inputs.length > 0 && inputs.every((si) => si.value);
 
+  const commit = async () => {
+    setPending(true);
+    await onCommit(inputs);
+    setPending(false);
+    setInputs([]);
+  };
   return (
     <div className={styles.module}>
       <div className={styles.titleBar}>
@@ -240,7 +256,10 @@ function TxModule() {
             </div>
             <div className={styles.bbRight}>
               <button
-                className={styles.btn}
+                className={[styles.btn, key ? '' : styles.btnDisabled].join(
+                  ' '
+                )}
+                disabled={!key}
                 onClick={() => {
                   setInputs(
                     inputs.concat([
@@ -264,20 +283,81 @@ function TxModule() {
           className={[styles.btn, canCommit ? '' : styles.btnDisabled].join(
             ' '
           )}
-          disabled={!canCommit}>
-          {canCommit ? <Spinner /> : 'Commit'}
+          disabled={!canCommit}
+          onClick={commit}>
+          {pending ? <Spinner /> : 'Commit'}
         </button>
       </div>
     </div>
   );
 }
 
-type FrozenTxProps = {
-  cid: string;
-  entries: Input[];
+const imageReg = /[\/.](gif|jpg|jpeg|tiff|png)$/i;
+
+type ValueDisplayProps = {
+  root: string;
+  name: string;
+  value: string;
+  load?: boolean;
 };
 
-function FrozenTxModule({cid, entries}: FrozenTxProps) {
+const txValue = selectorFamily<string, ValueDisplayProps>({
+  key: 'TxValue',
+  get: (props) => async () => {
+    if (!props.load || props.name.includes('.')) {
+      return '';
+    }
+    const value = await fetch(
+      MYEL_EP + '/' + props.root + '/' + props.name
+    ).then((res) => res.text());
+    return value;
+  },
+});
+
+function ValueDisplay(props: ValueDisplayProps) {
+  const {root} = props;
+  const [load, setLoad] = useState(false);
+  const value = useRecoilValue(txValue({...props, load}));
+  return load ? (
+    imageReg.test(value) ? (
+      <div
+        className={styles.imgPreview}
+        style={{
+          backgroundImage: `url(${MYEL_EP}/${root}/${value})`,
+        }}
+      />
+    ) : (
+      <div className={[styles.input, styles.inputImmut].join(' ')}>{value}</div>
+    )
+  ) : (
+    <div className={styles.stringItems}>
+      <div className={[styles.input, styles.inputImmut].join(' ')}>
+        {shortenCid(props.value)}
+      </div>
+      <div className={styles.download} onClick={() => setLoad(true)}>
+        <Download />
+      </div>
+    </div>
+  );
+}
+
+const txEntries = selectorFamily<Entry[], string>({
+  key: 'TxEntries',
+  get: (root) => async () => {
+    const entries = await new Tx({endpoint: MYEL_EP, root}).getEntries();
+    return entries.filter((entry) => !entry.key.includes('.'));
+  },
+});
+
+const shortenCid = (cid: string): string => {
+  return cid.slice(0, 6) + '...' + cid.slice(-7);
+};
+
+type FrozenTxProps = {
+  cid: string;
+};
+
+function FrozenTxModule({cid}: FrozenTxProps) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
     try {
@@ -285,14 +365,13 @@ function FrozenTxModule({cid, entries}: FrozenTxProps) {
       setCopied(true);
     } catch {}
   };
+  const entries = useRecoilValue(txEntries(cid));
   return (
     <div className={styles.module}>
       <div className={styles.titleBar}>
         <div className={styles.titleAccessory}></div>
         <div className={styles.titleLogo}>
-          <div className={styles.titleBarTitle}>
-            {cid.slice(0, 6)}...{cid.slice(-7)}
-          </div>
+          <div className={styles.titleBarTitle}>{shortenCid(cid)}</div>
         </div>
         <div
           className={[styles.titleAccessory, styles.copy].join(' ')}
@@ -305,13 +384,13 @@ function FrozenTxModule({cid, entries}: FrozenTxProps) {
         <div className={styles.ctrlContainer}>
           {entries.map((entry, i) => (
             <Row
-              id={entry.id}
-              key={entry.id}
+              id={entry.key}
+              key={entry.key}
               isFirst={i === 0}
               isLast={i === entries.length - 1}>
-              <div className={[styles.input, styles.inputImmut].join(' ')}>
-                {entry.value}
-              </div>
+              <Suspense fallback={<Spinner />}>
+                <ValueDisplay root={cid} name={entry.key} value={entry.value} />
+              </Suspense>
             </Row>
           ))}
         </div>
@@ -321,24 +400,36 @@ function FrozenTxModule({cid, entries}: FrozenTxProps) {
 }
 
 export default function Home() {
+  const [txs, setTxs] = useState<string[]>([]);
+
+  const handleCommit = async (entries: Input[]) => {
+    const tx = new Tx({endpoint: 'http://localhost:2001'});
+
+    entries.forEach((entry) => {
+      if (entry.value instanceof File) {
+        tx.put(entry.value.name, entry.value);
+        tx.put(entry.id, entry.value.name);
+      } else {
+        tx.put(entry.id, entry.value);
+      }
+    });
+
+    try {
+      const root = await tx.commit();
+      setTxs([...txs, root]);
+    } catch (e) {
+      console.log(e);
+    }
+  };
   return (
     <div className={styles.container}>
       <main className={styles.main}>
-        <TxModule />
-        <FrozenTxModule
-          cid="bafy2bzacea67pled2kakmi6gkerwtghknubyxpcqrcm74etufhyakghku65gg"
-          entries={[
-            {id: 'foo', value: 'bar', type: 'string'},
-            {id: 'username', value: 'jdoe', type: 'string'},
-          ]}
-        />
-        <FrozenTxModule
-          cid="bafy2bzacea67pled2kakmi6gkerwtghknubyxpcqrcm74etufhyakghku65gg"
-          entries={[
-            {id: 'foo', value: 'bar', type: 'string'},
-            {id: 'username', value: 'jdoe', type: 'string'},
-          ]}
-        />
+        <TxModule onCommit={handleCommit} />
+        {txs.map((tx) => (
+          <Suspense fallback={null} key={tx}>
+            <FrozenTxModule key={tx} cid={tx} />
+          </Suspense>
+        ))}
       </main>
 
       <footer className={styles.footer}>

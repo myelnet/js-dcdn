@@ -11,7 +11,7 @@
 .main {
   height: 100%;
   padding: 5rem 0;
-  align-items: start;
+  align-items: flex-start;
   display: flex;
   flex-direction: column;
 }
@@ -363,4 +363,11 @@
   border-radius: 1px;
   background-color: currentcolor;
   transform: rotate(45deg);
+}
+
+.download {
+  height: 13px;
+  width: 10px;
+  margin-left: 5px;
+  cursor: pointer;
 }
