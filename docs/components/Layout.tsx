@@ -1,10 +1,13 @@
 import Head from 'next/head';
 import Image from 'next/image';
 import Link from 'next/link';
+import {useRouter} from 'next/router';
 import styles from '../styles/Layout.module.css';
 import {PageProps, MasterProps, ListItem} from '../types/page';
 
 function NavBar() {
+  const {query} = useRouter();
+  const base = query.slug?.[0];
   return (
     <nav className={styles.navContainer}>
       <div className={styles.navContent}>
@@ -23,13 +26,21 @@ function NavBar() {
           </Link>
         </div>
         <div className={styles.navCenter}>
-          <div className={styles.navLink}>
-            <Link href="/">
+          <div
+            className={[
+              styles.navLink,
+              base === 'pop' ? styles.navLinkActive : '',
+            ].join(' ')}>
+            <Link href="/pop">
               <a>pop</a>
             </Link>
           </div>
-          <div className={styles.navLink}>
-            <Link href="/">
+          <div
+            className={[
+              styles.navLink,
+              base === 'myel-js' ? styles.navLinkActive : '',
+            ].join(' ')}>
+            <Link href="/myel-js">
               <a>myel.js</a>
             </Link>
           </div>
@@ -41,9 +52,15 @@ function NavBar() {
 }
 
 function Master({items, pathroot}: MasterProps) {
+  const {query} = useRouter();
+  const sel = query.slug?.[1];
   const renderSublist = (list: ListItem[]) =>
     list.map((item: ListItem) => (
-      <li key={item.slug}>
+      <li
+        key={item.slug}
+        className={
+          sel === item.slug.slice(1) ? styles.menuItemActive : undefined
+        }>
         <Link href={'/' + pathroot + item.slug}>
           <a>{item.title}</a>
         </Link>

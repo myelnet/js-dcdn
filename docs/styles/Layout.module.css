@@ -66,6 +66,15 @@
   display: flex;
   align-items: center;
   white-space: nowrap;
+  color: #74818D;
+}
+
+.navLink > a:hover {
+  color: #484848;
+}
+
+.navLinkActive {
+  color: #000;
 }
 
 .navLink:nth-child(1) {
@@ -101,7 +110,7 @@
   flex-direction: column;
 }
 
-.menuList li {
+.menuList > li {
   border-top: solid 1px transparent;
   border-bottom: solid 1px transparent;
   border-left: solid 1px transparent;
@@ -122,6 +131,17 @@
 
 .menuList li:hover {
   background-color: rgb(230, 236, 241);
+}
+
+.menuItemActive {
+  background-color: #FFF;
+  border-top-color: #E6ECF1 !important;
+  border-bottom-color: #E6ECF1 !important;
+  border-left-color: #E6ECF1 !important;
+}
+
+.menuItemActive:hover {
+  background-color: #FFF !important;
 }
 
 .menuHeading {
