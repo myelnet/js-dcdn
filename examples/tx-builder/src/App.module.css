@@ -90,6 +90,11 @@
   width: 13px;
   min-width: 13px;
   height: 13px;
+  transition: transform 350ms ease 0s;
+}
+
+.caretOpen > svg {
+  transform: rotate(180deg);
 }
 
 .panel {
@@ -334,6 +339,14 @@
   column-gap: 7px;
 }
 
+.sliderItems {
+  position: relative;
+  align-items: center;
+  display: grid;
+  grid-template-columns: auto 44px;
+  column-gap: 7px;
+}
+
 .imgPreview {
   box-sizing: border-box;
   border-radius: 3px;
@@ -379,4 +392,63 @@
   width: 10px;
   margin-left: 5px;
   cursor: pointer;
+}
+
+.rangeWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.range {
+  position: relative;
+  width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  background-color: #292d39;
+}
+
+.indicator {
+  position: absolute;
+  height: 100%;
+  background-color: #007bff;
+}
+
+.scrubber {
+  position: absolute;
+  width: 8px;
+  height: 16px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px #181c20;
+  background-color: #007bff;
+}
+
+.progressWrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.progressRange {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 2px;
+  background-color: #373c4b;
+}
+
+.progressIndicator {
+  position: absolute;
+  height: 100%;
+  background-color: #007bff;
+  border-radius: 2px;
+}
+
+.progressMsg {
+  margin-bottom: 5px;
 }

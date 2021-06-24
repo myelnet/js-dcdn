@@ -1,13 +1,22 @@
-import React, {useState, Suspense} from 'react';
+import React, {
+  useState,
+  Suspense,
+  useRef,
+  memo,
+  useImperativeHandle,
+} from 'react';
 import {atom, selectorFamily, useRecoilState, useRecoilValue} from 'recoil';
 import {useDropzone} from 'react-dropzone';
+import {useDrag} from 'react-use-gesture';
 import styles from './App.module.css';
 import MyelIcon from './MyelIcon';
 import Caret from './Caret';
 import Clipboard from './Clipboard';
 import Download from './Download';
 import Spinner from './Spinner';
-import {Tx, Entry} from 'myel-http-client';
+import {Tx, Entry, LoadResult} from 'myel-http-client';
+import {ErrorBoundary, FallbackProps} from 'react-error-boundary';
+import statusCopy from './statusCopy';
 
 type Input = {
   type: string;
@@ -121,7 +130,7 @@ type FileRowProps = RowProps &
 // FileRow is a horizontal file input featuring a preview for image files
 // as well as a delete action. `id` is the label prop and `isFirst` and `isLast` can
 // be used to tune the spacing when groupping with other row fields.
-function FileRow({
+const FileRow = memo(function ({
   id,
   isFirst,
   isLast,
@@ -155,6 +164,94 @@ function FileRow({
           <div className={styles.instructions}>click or drop</div>
         </div>
         <Delete onDelete={onDelete} />
+      </div>
+    </Row>
+  );
+});
+
+const range = (v: number, min: number, max: number) => {
+  if (max === min) return 0;
+  return (v - min) / (max - min);
+};
+const invertedRange = (p: number, min: number, max: number) =>
+  p * (max - min) + min;
+
+const sanitizeStep = (
+  v: number,
+  {step, initialValue}: {step: number; initialValue: number}
+) => {
+  const steps = Math.round((v - initialValue) / step);
+  return initialValue + steps * step!;
+};
+
+type SliderRowProps = RowProps & {
+  value: number;
+  onChange: (val: number) => void;
+  min: number;
+  max: number;
+  unit: string;
+};
+
+// SliderRow allows for chosing a numeric value either by setting it in the text input
+// or by sliding a range input controller.
+function SliderRow({
+  id,
+  isLast,
+  isFirst,
+  value,
+  onChange,
+  min,
+  max,
+  unit,
+}: SliderRowProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const scrubberRef = useRef<HTMLDivElement>(null);
+  const rangeWidth = useRef<number>(0);
+  const scrubberWidth = '8px';
+  const bind = useDrag(({event, first, xy: [x], movement: [mx], memo}) => {
+    if (first) {
+      // rangeWidth is the width of the slider el minus the width of the scrubber el itself
+      const {width, left} = ref.current!.getBoundingClientRect();
+      rangeWidth.current = width - parseFloat(scrubberWidth);
+
+      const targetIsScrub = event?.target === scrubberRef.current;
+      // memo is the value where the user clicked on
+      memo = targetIsScrub
+        ? value
+        : invertedRange((x - left) / width, min, max);
+    }
+    const newValue =
+      memo + invertedRange(mx / rangeWidth.current, 0, max - min);
+    onChange(sanitizeStep(newValue, {step: 1, initialValue: 0}));
+    return memo;
+  });
+  const pos = range(value, min, max);
+  return (
+    <Row id={id} isFirst={isFirst} isLast={isLast}>
+      <div className={styles.sliderItems}>
+        <div className={styles.rangeWrapper} ref={ref} {...bind()}>
+          <div className={styles.range}>
+            <div
+              className={styles.indicator}
+              style={{left: 0, right: `${(1 - pos) * 100}%`}}
+            />
+          </div>
+          <div
+            className={styles.scrubber}
+            ref={scrubberRef}
+            style={{left: `calc(${pos} * (100% - ${scrubberWidth}))`}}
+          />
+        </div>
+        <div className={styles.input}>
+          <input
+            id={id}
+            type="text"
+            value={value + unit}
+            autoComplete="off"
+            spellCheck="false"
+            onChange={(e) => onChange(Number(e.target.value.split(unit)[0]))}
+          />
+        </div>
       </div>
     </Row>
   );
@@ -315,6 +412,40 @@ function UploadModule({onCommit}: UploadModuleProps) {
   );
 }
 
+type ProgressProps = {};
+
+type ProgressHandle = {
+  updateProgress: (value: number, msg: string) => void;
+};
+
+const Progress: React.RefForwardingComponent<ProgressHandle, ProgressProps> = (
+  props,
+  ref
+) => {
+  const indicatorRef = useRef<HTMLDivElement>(null);
+  const msgRef = useRef<HTMLDivElement>(null);
+  useImperativeHandle(ref, () => ({
+    updateProgress: (value: number, msg: string) => {
+      indicatorRef.current!.style.right = `${(1 - value) * 100}%`;
+      msgRef.current!.innerText = msg;
+    },
+  }));
+  return (
+    <div className={styles.progressWrapper}>
+      <div className={styles.progressMsg} ref={msgRef} />
+      <div className={styles.progressRange}>
+        <div
+          ref={indicatorRef}
+          className={styles.progressIndicator}
+          style={{left: 0}}
+        />
+      </div>
+    </div>
+  );
+};
+
+const ProgressComponent = React.forwardRef(Progress);
+
 type DownloadModuleProps = {
   onDownload: (root: string) => void;
 };
@@ -323,11 +454,42 @@ type DownloadModuleProps = {
 // into the onDownload callback. When triggering the retrieval operation, it provides feedback
 // on this operation until successful or failed.
 function DownloadModule({onDownload}: DownloadModuleProps) {
+  const endpoint = useRecoilValue(gatewayEndpoint);
   const [root, setRoot] = useState('');
   const canRetrieve = !!root;
-  const retrieve = () => {
-    onDownload(root);
-    setRoot('');
+  const [price, setPrice] = useState(0);
+
+  const [pending, setPending] = useState(false);
+  const size = useRef<number>(1);
+  const tx = useRef<Tx | null>(null);
+
+  const progress = useRef<React.ElementRef<typeof ProgressComponent>>(null);
+
+  const onProgress = (result: LoadResult) => {
+    if (result.status === 'StatusSelectedOffer') {
+      size.current = result.size;
+    }
+    if (progress.current) {
+      progress.current.updateProgress(
+        result.totalReceived / size.current,
+        statusCopy[result.status]
+      );
+    }
+    if (result.status === 'DealStatusCompleted') {
+      setPending(false);
+      onDownload(root);
+      setRoot('');
+      setPrice(0);
+    }
+  };
+  const retrieve = async () => {
+    setPending(true);
+    try {
+      tx.current = new Tx({endpoint, root});
+      await tx.current.load({maxPPB: price}, onProgress);
+    } catch (e) {
+      console.log(e);
+    }
   };
   return (
     <div className={styles.module}>
@@ -357,22 +519,37 @@ function DownloadModule({onDownload}: DownloadModuleProps) {
               </div>
             </div>
           </div>
+          <SliderRow
+            id="price/byte"
+            value={price}
+            onChange={(val) => setPrice(val)}
+            min={0}
+            max={10}
+            isFirst={false}
+            isLast={true}
+            unit="aFIL"
+          />
         </div>
       </div>
       <div className={styles.submitRow}>
-        <button
-          className={[styles.btn, canRetrieve ? '' : styles.btnDisabled].join(
-            ' '
-          )}
-          disabled={!canRetrieve}
-          onClick={retrieve}>
-          Query
-        </button>
+        {pending ? (
+          <ProgressComponent ref={progress} />
+        ) : (
+          <button
+            className={[styles.btn, canRetrieve ? '' : styles.btnDisabled].join(
+              ' '
+            )}
+            disabled={!canRetrieve}
+            onClick={retrieve}>
+            Retrieve
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
+// eslint-disable-next-line
 const imageReg = /[\/.](gif|jpg|jpeg|tiff|png)$/i;
 
 type ValueDisplayProps = {
@@ -448,17 +625,23 @@ type FrozenTxProps = {
 
 function FrozenTxModule({cid}: FrozenTxProps) {
   const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(cid);
       setCopied(true);
     } catch {}
   };
-  const entries = useRecoilValue(txEntries(cid));
   return (
     <div className={styles.module}>
       <div className={styles.titleBar}>
-        <div className={styles.titleAccessory}></div>
+        <div
+          className={[styles.titleAccessory, open ? styles.caretOpen : ''].join(
+            ' '
+          )}
+          onClick={() => setOpen(!open)}>
+          <Caret />
+        </div>
         <div className={styles.titleLogo}>
           <div className={styles.titleBarTitle}>{shortenCid(cid)}</div>
         </div>
@@ -470,20 +653,43 @@ function FrozenTxModule({cid}: FrozenTxProps) {
         </div>
       </div>
       <div className={styles.panel}>
-        <div className={styles.ctrlContainer}>
-          {entries.map((entry, i) => (
-            <Row
-              id={entry.key}
-              key={entry.key}
-              isFirst={i === 0}
-              isLast={i === entries.length - 1}>
-              <Suspense fallback={<Spinner />}>
-                <ValueDisplay root={cid} name={entry.key} value={entry.value} />
-              </Suspense>
-            </Row>
-          ))}
-        </div>
+        {open && (
+          <ErrorBoundary FallbackComponent={TxEntriesListFallback}>
+            <Suspense fallback={null}>
+              <TxEntriesList cid={cid} />
+            </Suspense>
+          </ErrorBoundary>
+        )}
       </div>
+    </div>
+  );
+}
+
+function TxEntriesListFallback({error, resetErrorBoundary}: FallbackProps) {
+  return (
+    <Row id="error" isFirst isLast>
+      <button className={styles.btn} onClick={resetErrorBoundary}>
+        Try again
+      </button>
+    </Row>
+  );
+}
+
+function TxEntriesList({cid}: FrozenTxProps) {
+  const entries = useRecoilValue(txEntries(cid));
+  return (
+    <div className={styles.ctrlContainer}>
+      {entries.map((entry, i) => (
+        <Row
+          id={entry.key}
+          key={entry.key}
+          isFirst={i === 0}
+          isLast={i === entries.length - 1}>
+          <Suspense fallback={<Spinner />}>
+            <ValueDisplay root={cid} name={entry.key} value={entry.value} />
+          </Suspense>
+        </Row>
+      ))}
     </div>
   );
 }
@@ -507,7 +713,7 @@ function NodeSettingsModule() {
       <div className={styles.panel}>
         <div className={styles.ctrlContainer}>
           <StringRow
-            id="endpoint"
+            id="address"
             isFirst
             isLast
             value={stagedep}
@@ -565,17 +771,13 @@ export default function Home() {
         <div className={styles.col}>
           <UploadModule onCommit={handleCommit} />
           {txs.map((tx) => (
-            <Suspense fallback={null} key={tx}>
-              <FrozenTxModule key={tx} cid={tx} />
-            </Suspense>
+            <FrozenTxModule key={tx} cid={tx} />
           ))}
         </div>
         <div className={styles.col}>
           <DownloadModule onDownload={(root) => setDltxs([...dltxs, root])} />
           {dltxs.map((tx) => (
-            <Suspense fallback={null} key={tx}>
-              <FrozenTxModule key={tx} cid={tx} />
-            </Suspense>
+            <FrozenTxModule key={tx} cid={tx} />
           ))}
         </div>
       </main>
