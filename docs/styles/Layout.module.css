@@ -10,6 +10,7 @@
   display: flex;
   box-shadow: rgba(116, 129, 141, 0.1) 0px 3px 8px 0px;
   border-bottom: solid 1px rgb(212, 218, 221);
+  background-color: #fff;
 }
 
 .navContent {
@@ -33,7 +34,11 @@
   margin-left: 12px;
 }
 
-.navLeft {
+.navBurger {
+  display: none;
+}
+
+.navLogo {
   width: 100%;
   max-width: 298px;
   display: flex;
@@ -42,7 +47,7 @@
   position: relative;
 }
 
-.navLeft::after {
+.navLogo::after {
   top: 50%;
   right: 0px;
   height: 40px;
@@ -52,7 +57,7 @@
   border-left: solid 1px rgb(230, 236, 241);
 }
 
-.navCenter {
+.navLinks {
   flex: 1;
   max-width: 750px;
   display: flex;
@@ -99,9 +104,11 @@
 }
 
 .masterContent {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
-  margin-top: 32px;
+  padding-top: 32px;
   padding-left: 24px;
 }
 
@@ -213,4 +220,93 @@
   margin-bottom: 1rem;
 }
 
+.overlay {
+  background-color: rgb(24, 48, 85);
+  opacity: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  position: absolute;
+  pointer-events: none;
+  transition: opacity 250ms ease-out 0s;
+}
+
+@media screen and (max-width: 1023px) {
+  .navContainer {
+    position: fixed;
+    top: 0;
+    padding-left: 16px;
+    padding-right: 16px;
+    width: 100%;
+  }
+
+  .content {
+    padding-top: 80px;
+  }
+
+  .master {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 30;
+    position: fixed;
+    max-width: 298px;
+    transform: translateX(-100%);
+    box-shadow: none;
+    overflow-y: auto;
+    transition: transform 250ms ease;
+    border-right: 1px solid #E6ECF1;
+  }
+
+  .masterOpen {
+    transform: translateX(0px);
+  }
+
+  .overlayOpen {
+    opacity: 0.3;
+    pointer-events: auto;
+  }
+
+  .navContent {
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .navLinks {
+    display: none;
+  }
+
+  .navLogo::after {
+    display: none;
+  }
+
+  .navBurger {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    color:#242A31;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .detailContent {
+    margin: 0 auto; 
+    padding: 0 24px 24px;
+  }
+}
+
+
+@media screen and (max-width: 767px) {
+  .content {
+    padding-top: 60px;
+  }
+
+  .navContainer {
+    height: 60px
+  }
+}
 
