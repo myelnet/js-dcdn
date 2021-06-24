@@ -3,5 +3,4 @@ node_modules
 build/
 *.swp
 *.swo
-
-packages/myel-client/dist
+dist
