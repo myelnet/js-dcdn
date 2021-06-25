@@ -1,0 +1,11 @@
+[[redirects]]
+  from = "/"
+  to = "/pop/getting-started"
+
+[[redirects]]
+  from = "/pop"
+  to = "/pop/getting-started"
+
+[[redirects]]
+  from = "/myel-js"
+  to = "/myel-js/getting-started"
