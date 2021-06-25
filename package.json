@@ -4,6 +4,7 @@
     "packages/*"
   ],
   "scripts": {
+    "install-all": "yarn install && yarn plugin import workspace-tools", 
     "build": "yarn workspaces foreach run build"
   },
   "devDependencies": {
