@@ -65,13 +65,14 @@ function Master({items, pathroot, open}: MasterProps) {
   const sel = query.slug?.[1];
   const renderSublist = (list: ListItem[]) =>
     list.map((item: ListItem) => (
-      <li
-        key={item.slug}
-        className={
-          sel === item.slug.slice(1) ? styles.menuItemActive : undefined
-        }>
+      <li key={item.slug} className={styles.menuItem}>
         <Link href={'/' + pathroot + item.slug}>
-          <a>{item.title}</a>
+          <a
+            className={
+              sel === item.slug.slice(1) ? styles.menuItemActive : undefined
+            }>
+            {item.title}
+          </a>
         </Link>
       </li>
     ));

@@ -1,25 +1,35 @@
 ---
 title: Getting Started
-description: Integrate the Filecoin and IPFS into your application with the Myel CDN.
+description: Install and run your own Myel Point Of Presence.
 ---
 
 Welcome to the Myel documentation
 
-If you're new to IPFS we recommend that you start with the [IPFS basics](https://docs.ipfs.io/concepts/what-is-ipfs/).
-
 #### System Requirements
 
-- [Node.js 10.13](https://nodejs.org) or later
+- MacOS or Linux (Windows supported only for cache providers, see [pop provider](#))
 
 ## Setup
 
-To add myel.js into your project run with the package manager of your choice:
+Download and install the binaries from the [Github release page](https://github.com/myelnet/pop/releases).
+
+Or build from source:
 
 ```bash
-npm install myel cids
-# or
-yarn add myel cids
+$ git clone https://github.com/myelnet/pop.git
 ```
 
-Myel.js wraps HTTP requests to the Myel gateway available at https://myel.cloud. For best performance we encourage you to run your own Myel node either locally or on a dedicated server. If running locally a gateway will be available at http://localhost:2001.
+Install dependencies:
 
+```bash
+$ brew install go bzr jq pkg-config rustup hwloc
+```
+
+If you are running on arm64 architecture, you will need to build filecoin-ffi from source.
+Simply do that by adding the env variable: `FFI_BUILD_FROM_SOURCE=1` 
+
+Lastly run:
+
+```bash
+$ make all
+```

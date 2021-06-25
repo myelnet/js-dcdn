@@ -117,7 +117,7 @@
   flex-direction: column;
 }
 
-.menuList > li {
+.menuItem > a {
   border-top: solid 1px transparent;
   border-bottom: solid 1px transparent;
   border-left: solid 1px transparent;
@@ -188,6 +188,10 @@
   margin-bottom: 32px;
   border-bottom: solid 2px rgb(230, 236, 241);
   padding: 40px 0px;
+}
+
+.headerTitle {
+  margin-bottom: 1.25rem;
 }
 
 .text { 

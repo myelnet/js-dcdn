@@ -1,0 +1,4 @@
+{
+  "packages": ["packages/myel-http-client"],
+  "sandboxes": ["/examples/tx-builder"]
+}
