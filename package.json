@@ -3,7 +3,12 @@
   "workspaces": [
     "packages/*"
   ],
+  "scripts": {
+    "build": "concurrently 'yarn:build:*'",
+    "build:myel-http-client": "cd packages/myel-http-client && yarn build"
+  },
   "devDependencies": {
+    "concurrently": "^6.2.0",
     "prettier": "^2.2.1"
   }
 }

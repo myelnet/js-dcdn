@@ -1,14 +1,26 @@
+import {useState} from 'react';
 import Head from 'next/head';
 import Image from 'next/image';
 import Link from 'next/link';
+import {useRouter} from 'next/router';
 import styles from '../styles/Layout.module.css';
 import {PageProps, MasterProps, ListItem} from '../types/page';
+import Burger from './Burger';
 
-function NavBar() {
+type NavBarProps = {
+  onMenuOpen: () => void;
+};
+
+function NavBar({onMenuOpen}: NavBarProps) {
+  const {query} = useRouter();
+  const base = query.slug?.[0];
   return (
     <nav className={styles.navContainer}>
       <div className={styles.navContent}>
-        <div className={styles.navLeft}>
+        <div className={styles.navBurger} onClick={onMenuOpen}>
+          <Burger />
+        </div>
+        <div className={styles.navLogo}>
           <Link href="/">
             <a className={styles.logo}>
               <Image
@@ -22,35 +34,50 @@ function NavBar() {
             </a>
           </Link>
         </div>
-        <div className={styles.navCenter}>
-          <div className={styles.navLink}>
-            <Link href="/">
+        <div className={styles.navLinks}>
+          <div
+            className={[
+              styles.navLink,
+              base === 'pop' ? styles.navLinkActive : '',
+            ].join(' ')}>
+            <Link href="/pop">
               <a>pop</a>
             </Link>
           </div>
-          <div className={styles.navLink}>
-            <Link href="/">
+          <div
+            className={[
+              styles.navLink,
+              base === 'myel-js' ? styles.navLinkActive : '',
+            ].join(' ')}>
+            <Link href="/myel-js">
               <a>myel.js</a>
             </Link>
           </div>
         </div>
-        <div className={styles.navRight}></div>
+        <div className={styles.navSearch}></div>
       </div>
     </nav>
   );
 }
 
-function Master({items, pathroot}: MasterProps) {
+function Master({items, pathroot, open}: MasterProps) {
+  const {query} = useRouter();
+  const sel = query.slug?.[1];
   const renderSublist = (list: ListItem[]) =>
     list.map((item: ListItem) => (
-      <li key={item.slug}>
+      <li key={item.slug} className={styles.menuItem}>
         <Link href={'/' + pathroot + item.slug}>
-          <a>{item.title}</a>
+          <a
+            className={
+              sel === item.slug.slice(1) ? styles.menuItemActive : undefined
+            }>
+            {item.title}
+          </a>
         </Link>
       </li>
     ));
   return (
-    <aside className={styles.master}>
+    <aside className={[styles.master, open ? styles.masterOpen : ''].join(' ')}>
       <div className={styles.masterContent}>
         <ul className={styles.menuList}>{renderSublist(items[0])}</ul>
         <div className={styles.menuHeading}>Features</div>
@@ -110,6 +137,7 @@ export default function Layout({
   menu,
   root,
 }: PageProps) {
+  const [open, setOpen] = useState(false);
   return (
     <div className={styles.container}>
       <Head>
@@ -117,10 +145,14 @@ export default function Layout({
         <meta name="description" content={description} />
       </Head>
 
-      <NavBar />
+      <NavBar onMenuOpen={() => setOpen(true)} />
 
       <div className={styles.content}>
-        <Master items={menu} pathroot={root} />
+        <div
+          className={[styles.overlay, open ? styles.overlayOpen : ''].join(' ')}
+          onClick={() => setOpen(false)}
+        />
+        <Master items={menu} pathroot={root} open={open} />
         <Detail title={title} subtitle={description} content={content} />
       </div>
     </div>
