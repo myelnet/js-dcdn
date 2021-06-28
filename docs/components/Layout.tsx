@@ -9,6 +9,7 @@ import {PageProps, MasterProps, ListItem} from '../types/page';
 import Burger from './Burger';
 import Github from './Github';
 import LeftArrow from './LeftArrow';
+import MyelLogo from './MyelLogo';
 
 type NavBarProps = {
   onMenuOpen: () => void;
@@ -26,13 +27,7 @@ function NavBar({onMenuOpen}: NavBarProps) {
         <div className={styles.navLogo}>
           <Link href="/">
             <a className={styles.logo}>
-              <Image
-                src="/RoundedLogo.png"
-                className={styles.logoImg}
-                height={40}
-                width={40}
-                alt="Myel logo"
-              />
+              <MyelLogo />
               <span className={styles.logoTitle}>Myel Docs</span>
             </a>
           </Link>
