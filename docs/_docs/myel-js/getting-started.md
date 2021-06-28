@@ -21,7 +21,7 @@ npm install myel-http-client
 yarn add myel-http-client
 ```
 
-Myel.js wraps HTTP and JSON RPC requests to the Myel gateway available at https://myel.cloud. For best performance we encourage you to run your own Myel node either locally or on a dedicated server. If running locally a gateway will be available at http://localhost:2001.
+Myel.js wraps HTTP and JSON RPC requests to the Myel gateway available at `https://myel.cloud`. For best performance we encourage you to run your own Myel node either locally or on a dedicated server. If running locally a gateway will be available at `http://localhost:2001`.
 
 
 

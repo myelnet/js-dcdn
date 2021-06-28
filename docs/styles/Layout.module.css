@@ -86,6 +86,20 @@
   margin-left: 0px;
 }
 
+.navSearch {
+  display: flex;
+  align-items: center;
+}
+
+.githubLogo {
+  width: 24px;
+  color: #74818D;
+}
+
+.githubLogo:hover {
+  color: #484848;
+}
+
 .content {
   display: flex;
   flex: 1;
@@ -101,6 +115,10 @@
   flex-direction: column;
   padding-left: calc((100% - 1448px) / 2);
   border-right: solid 1px rgb(230, 236, 241);
+}
+
+.masterTopBar {
+  display: none;
 }
 
 .masterContent {
@@ -196,6 +214,8 @@
 
 .text { 
   max-width: 42rem;
+  color: rgba(0, 0, 0, 0.8);
+  line-height: 1.65;
 }
 
 
@@ -212,7 +232,7 @@
   margin-bottom: 1rem;
 }
 
-.text a {
+.text a:not(h2 > a) {
   color: #28A1FD;
 }
 
@@ -222,6 +242,13 @@
 
 .text pre {
   margin-bottom: 1rem;
+}
+
+.text p > code {
+  font-size: 16px;
+  padding: 2px 4px;
+  background-color: rgba(27, 31, 35, 0.05);
+  border-radius: 6px;
 }
 
 .overlay {
@@ -235,6 +262,11 @@
   position: absolute;
   pointer-events: none;
   transition: opacity 250ms ease-out 0s;
+}
+
+.backBtn {
+  display: flex;
+  align-items: center;
 }
 
 @media screen and (max-width: 1023px) {
@@ -305,6 +337,23 @@
 
 
 @media screen and (max-width: 767px) {
+  .masterTopBar {
+    display: flex;
+    height: 60px;
+    box-shadow: rgba(116, 129, 141, 0.1) 0px 3px 8px 0px;
+    border-bottom: solid 1px rgb(212, 218, 221);
+    background-color: #fff;
+    width: 100%;
+    align-items: center;
+    padding-left: 24px;
+  }
+
+  .sideNavLinks {
+    display: flex;
+    flex: 1;
+    padding-left: 24px;
+  }
+
   .content {
     padding-top: 60px;
   }

@@ -452,3 +452,10 @@
 .progressMsg {
   margin-bottom: 5px;
 }
+
+@media screen and (max-width: 923px) {
+  .main {
+    display: flex;
+    flex-direction: column;
+  }
+}

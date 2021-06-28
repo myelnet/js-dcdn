@@ -33,3 +33,15 @@ Lastly run:
 ```bash
 $ make all
 ```
+
+## Run
+
+Once installed, the pop CLI will be available in your path. You can run `pop -h` to print the available commands.
+
+A Myel point of presence is a long running process that operates in the background and takes as little ressources as possible. To start the daemon run:
+
+```bash
+$ pop start
+```
+
+You will then be guided through the interactive setup flow.

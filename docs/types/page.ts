@@ -15,4 +15,5 @@ export type MasterProps = {
   items: ListItem[][];
   pathroot: string;
   open: boolean;
+  onBack?: () => void;
 };
