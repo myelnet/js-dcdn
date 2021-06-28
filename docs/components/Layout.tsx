@@ -25,12 +25,13 @@ function NavBar({onMenuOpen}: NavBarProps) {
           <Burger />
         </div>
         <div className={styles.navLogo}>
-          <Link href="/">
-            <a className={styles.logo}>
-              <MyelLogo />
-              <span className={styles.logoTitle}>Myel Docs</span>
-            </a>
-          </Link>
+          <a
+            href="https://myel.network"
+            target="_blank"
+            className={styles.logo} rel="noreferrer">
+            <MyelLogo />
+            <span className={styles.logoTitle}>Myel Docs</span>
+          </a>
         </div>
         <div className={styles.navLinks}>
           <div
