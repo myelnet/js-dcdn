@@ -1,11 +1,15 @@
-import {useState} from 'react';
+import {useState, useEffect} from 'react';
 import Head from 'next/head';
 import Image from 'next/image';
 import Link from 'next/link';
 import {useRouter} from 'next/router';
+import {RemoveScroll} from 'react-remove-scroll';
 import styles from '../styles/Layout.module.css';
 import {PageProps, MasterProps, ListItem} from '../types/page';
 import Burger from './Burger';
+import Github from './Github';
+import LeftArrow from './LeftArrow';
+import MyelLogo from './MyelLogo';
 
 type NavBarProps = {
   onMenuOpen: () => void;
@@ -23,13 +27,7 @@ function NavBar({onMenuOpen}: NavBarProps) {
         <div className={styles.navLogo}>
           <Link href="/">
             <a className={styles.logo}>
-              <Image
-                src="/RoundedLogo.png"
-                className={styles.logoImg}
-                height={40}
-                width={40}
-                alt="Myel logo"
-              />
+              <MyelLogo />
               <span className={styles.logoTitle}>Myel Docs</span>
             </a>
           </Link>
@@ -54,14 +52,37 @@ function NavBar({onMenuOpen}: NavBarProps) {
             </Link>
           </div>
         </div>
-        <div className={styles.navSearch}></div>
+        <div className={styles.navSearch}>
+          <a
+            className={styles.githubLogo}
+            href={
+              base === 'myel-js'
+                ? 'https://github.com/myelnet/myel.js'
+                : 'https://github.com/myelnet/pop'
+            }>
+            <Github />
+          </a>
+        </div>
       </div>
     </nav>
   );
 }
 
-function Master({items, pathroot, open}: MasterProps) {
-  const {query} = useRouter();
+function Master({items, pathroot, open, onBack}: MasterProps) {
+  const {query, events} = useRouter();
+  useEffect(() => {
+    const handleRouteChange = () => {
+      onBack?.();
+    };
+    events.on('routeChangeStart', handleRouteChange);
+
+    // If the component is unmounted, unsubscribe
+    // from the event with the `off` method:
+    return () => {
+      events.off('routeChangeStart', handleRouteChange);
+    };
+  }, []);
+  const base = query.slug?.[0];
   const sel = query.slug?.[1];
   const renderSublist = (list: ListItem[]) =>
     list.map((item: ListItem) => (
@@ -77,15 +98,43 @@ function Master({items, pathroot, open}: MasterProps) {
       </li>
     ));
   return (
-    <aside className={[styles.master, open ? styles.masterOpen : ''].join(' ')}>
-      <div className={styles.masterContent}>
-        <ul className={styles.menuList}>{renderSublist(items[0])}</ul>
-        <div className={styles.menuHeading}>Features</div>
-        <ul className={styles.menuList}>{renderSublist(items[1])}</ul>
-        <div className={styles.menuHeading}>API</div>
-        <ul className={styles.menuList}>{renderSublist(items[2])}</ul>
-      </div>
-    </aside>
+    <RemoveScroll enabled={open} forwardProps>
+      <aside
+        className={[styles.master, open ? styles.masterOpen : ''].join(' ')}>
+        <div className={styles.masterTopBar}>
+          <div className={styles.backBtn} onClick={onBack}>
+            <LeftArrow />
+          </div>
+          <div className={styles.sideNavLinks}>
+            <div
+              className={[
+                styles.navLink,
+                base === 'pop' ? styles.navLinkActive : '',
+              ].join(' ')}>
+              <Link href="/pop">
+                <a>pop</a>
+              </Link>
+            </div>
+            <div
+              className={[
+                styles.navLink,
+                base === 'myel-js' ? styles.navLinkActive : '',
+              ].join(' ')}>
+              <Link href="/myel-js">
+                <a>myel.js</a>
+              </Link>
+            </div>
+          </div>
+        </div>
+        <div className={styles.masterContent}>
+          <ul className={styles.menuList}>{renderSublist(items[0])}</ul>
+          <div className={styles.menuHeading}>Features</div>
+          <ul className={styles.menuList}>{renderSublist(items[1])}</ul>
+          <div className={styles.menuHeading}>API</div>
+          <ul className={styles.menuList}>{renderSublist(items[2])}</ul>
+        </div>
+      </aside>
+    </RemoveScroll>
   );
 }
 
@@ -152,7 +201,12 @@ export default function Layout({
           className={[styles.overlay, open ? styles.overlayOpen : ''].join(' ')}
           onClick={() => setOpen(false)}
         />
-        <Master items={menu} pathroot={root} open={open} />
+        <Master
+          items={menu}
+          pathroot={root}
+          open={open}
+          onBack={() => setOpen(false)}
+        />
         <Detail title={title} subtitle={description} content={content} />
       </div>
     </div>

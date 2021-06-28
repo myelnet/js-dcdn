@@ -25,12 +25,12 @@ const menus: {[key: string]: any} = {
       {title: 'Roadmap', slug: '/roadmap'},
     ],
     [
-      {title: 'Working with the CLI', slug: '/cli'},
-      {title: 'Monitoring', slug: '/monitoring'},
+      {title: 'Client', slug: '/client'},
+      {title: 'Provider', slug: '/provider'},
     ],
     [
-      {title: 'POST', slug: '/post'},
-      {title: 'GET', slug: '/get'},
+      {title: 'CLI', slug: '/cli'},
+      {title: 'HTTP', slug: '/http'},
       {title: 'JSON RPC', slug: '/json-rpc'},
     ],
   ],

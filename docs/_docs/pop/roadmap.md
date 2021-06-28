@@ -5,11 +5,12 @@ description: Get a preview of upcoming features and improvements coming soon!
 
 The Myel CDN is highly experimental and is likely to evolve a lot over the next few years before we stabilize the protocol around an optimal implementation.
 
-## Browser retrievals
+## Economics
 
-Currently Myel.js requires HTTP endpoints to communicate with a Myel node. In the future, client nodes will run in browsers directly and retrieve content directly from edge node.
+We're currently experimenting with different economic incentives for running a Myel node. Upon launching our incentive programs, individuals running pop on their devices will be compensated by receiving FIL from random retrieval deals.
 
-## Sponsored retrievals
+## Monitoring
 
-In the latest implementation, data transfers are paid by the Myel node used as gateway. We plan to allow whitelisted nodes to retrieve content sponsored by a 3rd party.
+Once the protocol is more stable, a monitoring dashboard will be available to inspect pop economic performance and ressource usage. We hope this will bring more transparency into how the system operates and encourage more people to join our community and run some pops.
 
+We have more potential features in the work and this roadmap is subject to change. If there's anything you'd like us to prioritize please open an issue on our [Github](https://github.com/myelnet/pop) and we'll respond to it ASAP.
