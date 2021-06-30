@@ -134,7 +134,7 @@ export class Tx {
     root: string,
     progressFunc: (result: LoadResult) => void
   ): Promise<void> {
-    this._assertRoot();
+    this._assertRoot(root);
     return this.subscribe(
       'pop.Load',
       [{cid: root, maxPPB: this.options.maxPPB}],
@@ -142,8 +142,8 @@ export class Tx {
     );
   }
 
-  _assertRoot() {
-    if (!this.options.root) {
+  _assertRoot(root?: string) {
+    if (!this.options.root && !root) {
       throw new Error(
         'could not get entries: no root CID for this transaction'
       );
