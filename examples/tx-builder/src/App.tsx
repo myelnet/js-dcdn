@@ -485,8 +485,8 @@ function DownloadModule({onDownload}: DownloadModuleProps) {
   const retrieve = async () => {
     setPending(true);
     try {
-      tx.current = new Tx({endpoint, root});
-      await tx.current.load({maxPPB: price}, onProgress);
+      tx.current = new Tx({gateway: endpoint, maxPPB: price});
+      await tx.current.load(root, onProgress);
     } catch (e) {
       console.log(e);
     }
@@ -610,7 +610,7 @@ const txEntries = selectorFamily<Entry[], string>({
     (root) =>
     async ({get}) => {
       const endpoint = get(gatewayEndpoint);
-      const entries = await new Tx({endpoint, root}).getEntries();
+      const entries = await new Tx({gateway: endpoint, root}).getEntries();
       return entries.filter((entry) => !entry.key.includes('.'));
     },
 });
@@ -744,7 +744,7 @@ export default function Home() {
   const endpoint = useRecoilValue(gatewayEndpoint);
 
   const handleCommit = async (entries: Input[]) => {
-    const tx = new Tx({endpoint});
+    const tx = new Tx({gateway: endpoint});
 
     entries.forEach((entry) => {
       if (entry.value instanceof File) {
