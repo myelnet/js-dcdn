@@ -1,7 +1,3 @@
-export type LoadOptions = {
-  maxPPB: number;
-};
-
 export type LoadResult = {
   status: string;
   dealID: string;
@@ -33,7 +29,8 @@ export type InflightRequest = {
 };
 
 export type TxOptions = {
-  endpoint: string;
+  gateway: string;
+  maxPPB?: number;
   root?: string;
 };
 
@@ -52,7 +49,7 @@ export class Tx {
     this.options = options;
     this.entries = new Map();
 
-    const parts = options.endpoint.split('//');
+    const parts = options.gateway.split('//');
     const wsPl = parts[0] === 'https' ? 'wss:' : 'ws:';
     const wsUrl = wsPl + '//' + parts[1] + '/rpc';
 
@@ -134,13 +131,13 @@ export class Tx {
   }
 
   async load(
-    opts: LoadOptions,
+    root: string,
     progressFunc: (result: LoadResult) => void
   ): Promise<void> {
     this._assertRoot();
     return this.subscribe(
       'pop.Load',
-      [{cid: this.options.root, maxPPB: opts.maxPPB}],
+      [{cid: root, maxPPB: this.options.maxPPB}],
       progressFunc
     );
   }
@@ -153,8 +150,15 @@ export class Tx {
     }
   }
 
-  put(key: string, value: any) {
-    this.entries.set(key, value);
+  put(key: string | {[key: string]: any}, value?: any): void {
+    if (typeof key === 'string') {
+      this.entries.set(key, value);
+    }
+    if (typeof key === 'object') {
+      for (const [k, v] of Object.entries(key)) {
+        this.entries.set(k, v);
+      }
+    }
   }
 
   async commit(): Promise<string> {
@@ -164,7 +168,7 @@ export class Tx {
       body.append(key, value);
     }
 
-    const response = await fetch(this.options.endpoint, {
+    const response = await fetch(this.options.gateway, {
       method: 'POST',
       body,
     });
@@ -177,7 +181,7 @@ export class Tx {
 
   async getEntries(): Promise<Entry[]> {
     this._assertRoot();
-    return fetch(this.options.endpoint + '/' + this.options.root)
+    return fetch(this.options.gateway + '/' + this.options.root)
       .then((res) => res.json())
       .then((items) =>
         items.map((item: SerializedEntry) => ({
@@ -191,7 +195,7 @@ export class Tx {
   async getString(key: string): Promise<string> {
     this._assertRoot();
     return fetch(
-      this.options.endpoint + '/' + this.options.root + '/' + key
+      this.options.gateway + '/' + this.options.root + '/' + key
     ).then((res) => res.text());
   }
 }
