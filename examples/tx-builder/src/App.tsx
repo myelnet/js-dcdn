@@ -18,6 +18,9 @@ import {Tx, Entry, LoadResult} from 'myel-http-client';
 import {ErrorBoundary, FallbackProps} from 'react-error-boundary';
 import statusCopy from './statusCopy';
 
+// eslint-disable-next-line
+const imageReg = /[\/.](gif|jpg|jpeg|tiff|png)$/i;
+
 type Input = {
   type: string;
   id: string;
@@ -157,11 +160,19 @@ const FileRow = memo(function ({
       <div className={styles.fileItems}>
         <div
           className={styles.imgPreview}
-          style={{backgroundImage: value ? `url(${getUrl(value)})` : 'none'}}
+          style={
+            value
+              ? imageReg.test(value.name)
+                ? {backgroundImage: `url(${getUrl(value)})`}
+                : {backgroundColor: '#dbdbdb'}
+              : undefined
+          }
         />
         <div {...(getRootProps({className: styles.input}) as any)}>
           <input {...getInputProps()} />
-          <div className={styles.instructions}>click or drop</div>
+          <div className={styles.instructions}>
+            {value ? value.name : 'click or drop'}
+          </div>
         </div>
         <Delete onDelete={onDelete} />
       </div>
@@ -548,9 +559,6 @@ function DownloadModule({onDownload}: DownloadModuleProps) {
     </div>
   );
 }
-
-// eslint-disable-next-line
-const imageReg = /[\/.](gif|jpg|jpeg|tiff|png)$/i;
 
 type ValueDisplayProps = {
   root: string;

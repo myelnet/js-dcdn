@@ -7331,11 +7331,6 @@ multicast-dns@^6.0.1:
 myel-http-client@../../packages/myel-http-client/:
   version "0.1.0"
 
-myel-http-client@^0.1.0:
-  version "0.1.0"
-  resolved "https://registry.yarnpkg.com/myel-http-client/-/myel-http-client-0.1.0.tgz#984465e11b85432ece4d33ea9cf5732b35e2cd0a"
-  integrity sha512-6N/V41SHTl+77pl4P4DALTrfKF/E4gGvDw78Z+qvOu26bJ23PefdEfbjFTk2yDgp32zEhyqYgmooothgNo/YIA==
-
 nan@^2.12.1:
   version "2.14.2"
   resolved "https://registry.yarnpkg.com/nan/-/nan-2.14.2.tgz#f5376400695168f4cc694ac9393d0c9585eeea19"
