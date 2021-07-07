@@ -103,6 +103,7 @@
 .card:active {
   color: #0070f3;
   border-color: #0070f3;
+  cursor: pointer;
 }
 
 .card h2 {
@@ -116,9 +117,20 @@
   line-height: 1.5;
 }
 
+.card input {
+  width: 100%;
+}
+
 .logo {
   margin-left: 0.5rem;
   font-weight: bold;
+}
+
+.cardRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
 }
 
 @media (max-width: 600px) {

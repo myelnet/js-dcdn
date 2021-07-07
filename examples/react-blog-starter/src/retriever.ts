@@ -12,7 +12,9 @@ import CID from 'cids';
 import dagCBOR from 'ipld-dag-cbor';
 import WebRTCDirect from 'libp2p-webrtc-direct';
 
-const PROTOCOL = '/ipfs/graphsync/1.0.0';
+const GS_PROTOCOL = '/ipfs/graphsync/1.0.0';
+
+const ECHO_PROTOCOL = '/echo/1.0.0';
 
 type Selector = Object;
 
@@ -35,6 +37,7 @@ interface DataTransfer {
   id: string;
   loaded: boolean;
   request: (p: PeerId, root: CID, selector: Selector) => Promise<void>;
+  echo: (p: PeerId, msg: string) => Promise<void>;
   libp2p?: Libp2p;
 }
 
@@ -92,7 +95,7 @@ message Message {
 
 const sendMsg = async (node: Libp2p, peerId: PeerId, message: Message) => {
   try {
-    const {stream} = await node.dialProtocol(peerId, PROTOCOL);
+    const {stream} = await node.dialProtocol(peerId, GS_PROTOCOL);
     const bytes = gsMsg.Message.encode(message);
     await pipe([bytes], lp.encode(), stream);
   } catch (e) {
@@ -107,7 +110,7 @@ export const useDT = (): DataTransfer => {
     try {
       const libp2p = await Libp2p.create({
         modules: {
-          transport: [Websockets, WebRTCDirect],
+          transport: [WebRTCDirect],
           connEncryption: [NOISE],
           streamMuxer: [Mplex],
         },
@@ -118,7 +121,7 @@ export const useDT = (): DataTransfer => {
       );
 
       libp2p.handle(
-        '/ipfs/graphsync/1.0.0',
+        GS_PROTOCOL,
         ({connection, stream, protocol}: HandlerProps) => {
           return pipe(stream, lp.decode(), async function (source) {
             for await (const data of source) {
@@ -156,16 +159,33 @@ export const useDT = (): DataTransfer => {
     await sendMsg(node, peerId, req);
   };
 
+  const echo = async (peerId: PeerId, msg: string) => {
+    try {
+      const {stream} = await node.dialProtocol(peerId, ECHO_PROTOCOL);
+      await pipe([msg], stream, async function (source: Uint8Array[]) {
+        // For each chunk of data
+        for await (const data of source) {
+          // Output the data
+          console.log('received echo:', data.toString());
+        }
+      });
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
   return node
     ? {
         id: node.peerId.toB58String(),
         loaded: true,
         request,
+        echo,
         libp2p: node,
       }
     : {
         id: '',
         loaded: false,
         request,
+        echo,
       };
 };

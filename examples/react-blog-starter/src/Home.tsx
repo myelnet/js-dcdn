@@ -12,6 +12,7 @@ const TEST_CID =
 
 export default function Home() {
   const [cid, setCid] = useState<string | null>(null);
+  const [peerAddr, setPeerAddr] = useState<string>('');
   const dt = useDT();
 
   const startTransfer = () => {
@@ -48,6 +49,21 @@ export default function Home() {
   }, []);
   const {getRootProps, getInputProps, isDragActive} = useDropzone({onDrop});
 
+  const handleEcho = () => {
+    if (!dt.libp2p || !peerAddr) {
+      return;
+    }
+    const addr = multiaddr(peerAddr);
+    const pidStr = addr.getPeerId();
+    if (!pidStr) {
+      return;
+    }
+    const pid = PeerId.createFromB58String(pidStr);
+    dt.libp2p.peerStore.addressBook.set(pid, [addr]);
+
+    dt.echo(pid, 'hello world');
+  };
+
   return (
     <div className={styles.container}>
       <main className={styles.main}>
@@ -77,15 +93,23 @@ export default function Home() {
           </div>
 
           <div className={styles.card}>
-            <h2>Examples &rarr;</h2>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
+            <h2>Echo &rarr;</h2>
+            <p>Send echo message to peer:</p>
+            <div className={styles.cardRow}>
+              <input
+                type="text"
+                name="addrs"
+                value={peerAddr}
+                placeholder="/ip4/127.0.0.1/tcp/60834/http/p2p-webrtc-direct/p2p/12D3KooWF4Tda3GXUAegZ4Qt5yzG6qQEjWt9Z2N5NVkunzsn8Zaf"
+                onChange={(e) => setPeerAddr(e.target.value)}
+              />
+              <button onClick={handleEcho}>Send</button>
+            </div>
           </div>
 
           <div className={styles.card}>
             <h2>Deploy &rarr;</h2>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
+            <p>Blablablah</p>
           </div>
         </div>
       </main>
