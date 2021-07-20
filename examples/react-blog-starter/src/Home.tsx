@@ -49,7 +49,7 @@ export default function Home() {
 
   const handleLoad = () => {
     const addr = multiaddr(
-      '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWLDMn8DJo1Rohzx2qmWDzjtG5cgsAMe6bCN9K3BgdzdkF'
+      '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
     );
     const pidStr = addr.getPeerId();
     if (!pidStr || !dt.libp2p) {

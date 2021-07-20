@@ -54,31 +54,24 @@ export const useDT = (): DataTransfer => {
   const request = async (peerId: PeerId, rootCID: CID) => {
     if (!client.current) return;
 
-    const chid = await client.current.load(
-      peerId,
-      {
-        type: 'ReplicationRequestVoucher',
-        raw: [0, rootCID, 0],
-      },
-      rootCID,
-      allSelector
-    );
+    const chid = await client.current.load(peerId, rootCID, allSelector);
   };
 
   const dial = async (addr: Multiaddr) => {
-    const pidStr = addr.getPeerId();
-    if (!pidStr) {
-      return;
-    }
-    const pid = PeerId.createFromB58String(pidStr);
+    // const pidStr = addr.getPeerId();
+    // if (!pidStr) {
+    //   return;
+    // }
+    // const pid = PeerId.createFromB58String(pidStr);
 
-    node.peerStore.addressBook.set(pid, [addr]);
+    // node.peerStore.addressBook.set(pid, [addr]);
 
-    try {
-      await node.dial(pid);
-    } catch (e) {
-      console.log(e);
-    }
+    // try {
+    //   await node.dial(pid);
+    // } catch (e) {
+    //   console.log(e);
+    // }
+    if (!client.current) return;
   };
 
   return node

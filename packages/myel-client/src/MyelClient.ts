@@ -10,6 +10,9 @@ import protons from 'protons';
 // @ts-ignore (no types)
 import vd from 'varint-decoder';
 import {blake2b256} from '@multiformats/blake2/blake2b';
+import BN from 'bn.js';
+
+import {FilRPC} from './FilRPC';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -41,11 +44,46 @@ interface Blockstore {
 type MyelClientOptions = {
   libp2p: P2P;
   blocks: Blockstore;
+  lotusUrl?: string;
 };
 
-type Voucher = {
-  type: string;
-  raw: any;
+enum DealStatus {
+  New = 0,
+  Unsealing,
+  Unsealed,
+  WaitForAcceptance,
+  PaymentChannelCreating,
+  PaymentChannelAddingFunds,
+  Accepted,
+  FundsNeededUnseal,
+  Failing,
+  Rejected,
+  FundsNeeded,
+  SendFunds,
+  SendFundsLastPayment,
+  Ongoing,
+  FundsNeededLastPayment,
+  Completed,
+  DealNotFound,
+  Errored,
+  BlocksComplete,
+  Finalizing,
+  Completing,
+  CheckComplete,
+  CheckFunds,
+  InsufficientFunds,
+  PaymentChannelAllocatingLane,
+  Cancelling,
+  Cancelled,
+  WaitingForLastBlocks,
+  PaymentChannelAddingInitialFunds,
+}
+
+type DealResponse = {
+  ID: number;
+  Status: DealStatus;
+  PaymentOwed: Uint8Array;
+  Message: string;
 };
 
 type Selector = Object;
@@ -56,11 +94,15 @@ type ChannelID = {
   responder: PeerId;
 };
 
+type Channel = {
+  callback: (error: Error | null, result: ChannelState) => void;
+  state: ChannelState;
+};
+
 type ChannelState = {
   status: string;
   root: CID;
   selector: Selector;
-  totalSize: number;
   received: number;
 };
 
@@ -88,7 +130,7 @@ type TransferResponse = {
   Acpt: boolean;
   Paus: boolean;
   XferID: number;
-  VRes: Uint8Array;
+  VRes: any;
   VTyp: string;
 };
 
@@ -201,13 +243,32 @@ function encodeRequest(req: TransferRequest): Uint8Array {
   return enc;
 }
 
-export class MyelClient {
-  libp2p: P2P;
-  blocks: Blockstore;
+function encodeBigInt(int: string): Uint8Array {
+  if (int === '0') {
+    return Buffer.from('');
+  }
+  const bigInt = new BN(int, 10);
+  const buf = bigInt.toArrayLike(Buffer, 'be', bigInt.byteLength());
+  return Buffer.concat([Buffer.from('00', 'hex'), buf]);
+}
 
+export class MyelClient {
+  // libp2p is our p2p networking interface
+  libp2p: P2P;
+  // blockstore stores the retrieved blocks
+  blocks: Blockstore;
+  // filRPC communicates with a Filecoin node to send chain messages
+  filRPC: FilRPC;
+
+  // data transfer request ID. It is currently used for deal ID too. Based on Date for better uniqueness.
   _dtReqId: number = Date.now();
+  // graphsync request ID is incremented from 0. Uniqueness is not important across nodes.
   _gsReqId: number = 0;
-  _channels: Map<ChannelID, ChannelState> = new Map();
+  // channels are stateful communication channels between 2 peers.
+  _channels: Map<ChannelID, Channel> = new Map();
+  // keeps track of channels for a given graphsync request ID
+  _chanByGsReq: Map<number, ChannelID> = new Map();
+  // hashers used by the blockstore to verify the incoming blocks. Currently hard coded but may be customizable.
   _hashers: {[key: number]: hasher.MultihashHasher} = {
     [blake2b256.code]: blake2b256,
   };
@@ -216,11 +277,18 @@ export class MyelClient {
     this.libp2p = options.libp2p;
     this.blocks = options.blocks;
 
+    const url =
+      options.lotusUrl ||
+      'wss://1jPq2Ky6ijDj97A7sTR9Q8eswuo:9ce30a3bbcdf2b9c2aba5eba4f590fa5@filecoin.infura.io';
+    this.filRPC = new FilRPC(url);
+
     this.libp2p.connectionManager.on('peer:connect', (conn: Connection) => {
       console.log(conn.remotePeer.toString());
     });
 
+    // handle all graphsync connections
     this.libp2p.handle(GS_PROTOCOL, this._onGraphsyncConn.bind(this));
+    // handle all data transfer connections
     this.libp2p.handle(DT_PROTOCOL, this._onDataTransferConn.bind(this));
   }
 
@@ -238,22 +306,30 @@ export class MyelClient {
     });
   }
 
-  _newRequest(
-    selector: Selector,
-    voucher: Voucher,
-    root: CID,
-    to: PeerId
-  ): TransferRequest {
+  _newRequest(selector: Selector, root: CID, to: PeerId): TransferRequest {
     const rid = this._dtReqId++;
+    const sel = encode(selector);
+    const voucher = {
+      ID: rid,
+      PayloadCID: root,
+      Params: {
+        Selector: sel,
+        PieceCID: null,
+        PricePerByte: encodeBigInt('0'),
+        PaymentInterval: 0,
+        PaymentIntervalIncrease: 0,
+        UnsealPrice: encodeBigInt('0'),
+      },
+    };
     return {
       BCid: root,
       Type: 0,
       Pull: true,
       Paus: false,
       Part: false,
-      Stor: encode(selector),
-      Vouch: voucher.raw,
-      VTyp: voucher.type,
+      Stor: sel,
+      Vouch: voucher,
+      VTyp: 'RetrievalDealProposal/1',
       XferID: rid,
     };
   }
@@ -263,7 +339,8 @@ export class MyelClient {
     root: CID,
     selector: Selector,
     initiator: PeerId,
-    responder: PeerId
+    responder: PeerId,
+    callback: (error: Error | null, response: ChannelState) => void
   ): ChannelID {
     const chid = {
       id: tid,
@@ -271,11 +348,13 @@ export class MyelClient {
       responder,
     };
     this._channels.set(chid, {
-      status: 'Requested',
-      root,
-      selector,
-      totalSize: 0,
-      received: 0,
+      callback,
+      state: {
+        status: 'Requested',
+        root,
+        selector,
+        received: 0,
+      },
     });
     return chid;
   }
@@ -298,23 +377,45 @@ export class MyelClient {
   }
 
   async _handleGraphsyncMsg(from: PeerId, msg: GraphsyncMessage) {
-    console.log(msg);
+    let chanId: ChannelID | null = null;
+    let channel: Channel | null = null;
     // extract data transfer extensions from graphsync response messages
     if (msg.responses) {
       for (let i = 0; i < msg.responses.length; i++) {
         const gsres = msg.responses[i];
-
-        const extData = gsres.extensions[DT_EXTENSION];
-        if (!extData) {
+        const chid = this._chanByGsReq.get(gsres.id);
+        // if we have no channel for this response this is a bug
+        if (!chid) {
+          console.log('received message without a dt channel');
           continue;
         }
-        const dtres: TransferMessage = decode(extData);
-        console.log(dtres);
+        chanId = chid;
+
+        const ch = this._channels.get(chid);
+        if (!ch) {
+          console.log('could not find channel', ch);
+          continue;
+        }
+        channel = ch;
 
         switch (gsres.status) {
           case GraphsyncResponseStatus.RequestFailedUnknown:
-            if (!dtres.Response?.Acpt) {
-              console.log('Request refused');
+            channel.callback(new Error('Request refused'), channel.state);
+            return;
+          case GraphsyncResponseStatus.PartialResponse:
+            const extData = gsres.extensions[DT_EXTENSION];
+            if (!extData) {
+              continue;
+            }
+            const dtres: TransferMessage = decode(extData);
+            console.log(dtres);
+
+            // check the voucher response status
+            switch (dtres.Response?.VRes?.Status) {
+              case DealStatus.Accepted:
+                channel.state.status = 'Accepted';
+              default:
+                continue;
             }
         }
       }
@@ -322,9 +423,19 @@ export class MyelClient {
     // extract blocks from graphsync messages
     if (msg.data) {
       for (let i = 0; i < msg.data.length; i++) {
+        if (!channel) {
+          console.log('got block without a channel');
+          continue;
+        }
         const cid = await this._processBlock(msg.data[i]);
         console.log(cid.toString());
+        // track the amount of bytes received
+        channel.state.received += msg.data[i].data.byteLength;
       }
+    }
+
+    if (chanId && channel) {
+      this._channels.set(chanId, channel);
     }
   }
 
@@ -367,43 +478,63 @@ export class MyelClient {
         for await (const data of source) {
           buffer = buffer.append(data);
         }
-        const decoded = decode(buffer.slice());
+        const decoded: TransferMessage = decode(buffer.slice());
         console.log('onDTConn', decoded);
+
+        const res = decoded.Response;
+        if (res && res.VRes && res.VTyp === 'RetrievalDealResponse/1') {
+          const response: DealResponse = res.VRes;
+          switch (response.Status) {
+            case DealStatus.Completed:
+          }
+        }
       });
     } catch (e) {
       console.log(e);
     }
   }
 
-  async load(
+  load(
     from: PeerId,
-    voucher: Voucher,
     root: CID,
-    selector: Selector
-  ): Promise<ChannelID> {
-    const req = this._newRequest(selector, voucher, root, from);
-    const chid = this._createChannel(
-      req.XferID,
-      root,
-      selector,
-      this.libp2p.peerId,
-      from
-    );
-    await this._sendGraphsyncMsg(from, {
-      requests: [
-        {
-          id: this._gsReqId++,
-          priority: 0,
-          root: root.bytes,
-          selector: encode(selector),
-          cancel: false,
-          update: false,
-          extensions: {
-            'fil/data-transfer/1.1': encodeRequest(req),
+    selector: Selector,
+    cb?: (state: ChannelState) => void
+  ): Promise<ChannelState> {
+    return new Promise(async (resolve, reject) => {
+      const req = this._newRequest(selector, root, from);
+
+      function callback(error: Error | null, result: ChannelState) {
+        if (cb) cb(result);
+        if (error) {
+          return reject(error);
+        }
+        return resolve(result);
+      }
+
+      const chid = this._createChannel(
+        req.XferID,
+        root,
+        selector,
+        this.libp2p.peerId,
+        from,
+        callback
+      );
+
+      await this._sendGraphsyncMsg(from, {
+        requests: [
+          {
+            id: this._gsReqId++,
+            priority: 0,
+            root: root.bytes,
+            selector: encode(selector),
+            cancel: false,
+            update: false,
+            extensions: {
+              'fil/data-transfer/1.1': encodeRequest(req),
+            },
           },
-        },
-      ],
+        ],
+      });
     });
-    return chid;
   }
 }
