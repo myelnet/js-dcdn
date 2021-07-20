@@ -11,8 +11,10 @@
   "dependencies": {
     "cids": "^1.1.6",
     "date-fns": "2.16.1",
+    "debug": "^4.3.2",
     "excerpts": "0.0.3",
     "history": "^5.0.0",
+    "interface-blockstore": "^1.0.0",
     "ipld-dag-cbor": "^1.0.0",
     "it-length-prefixed": "^5.0.2",
     "it-pipe": "^1.1.0",
@@ -24,6 +26,7 @@
     "libp2p-websockets": "^0.15.7",
     "marked": "1.2.7",
     "multiaddr": "^9.0.1",
+    "myel-client": "../../packages/myel-client/",
     "peer-id": "^0.14.8",
     "protons": "^2.0.1",
     "react": "0.0.0-experimental-3310209d0",
@@ -40,6 +43,7 @@
     "remark-parse": "^9.0.0",
     "remark-rehype": "^8.0.0",
     "sanitize-html": "2.3.0",
+    "uint8arrays": "^2.1.5",
     "unified": "^9.2.0"
   },
   "devDependencies": {
