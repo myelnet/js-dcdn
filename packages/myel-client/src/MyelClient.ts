@@ -11,8 +11,12 @@ import protons from 'protons';
 import vd from 'varint-decoder';
 import {blake2b256} from '@multiformats/blake2/blake2b';
 import BN from 'bn.js';
+import {Address} from '@glif/filecoin-address';
 
 import {FilRPC} from './FilRPC';
+import {PaychMgr} from './PaychMgr';
+import {Signer, Secp256k1Signer} from './Signer';
+import {encodeAsBigInt} from './utils';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -243,22 +247,17 @@ function encodeRequest(req: TransferRequest): Uint8Array {
   return enc;
 }
 
-function encodeBigInt(int: string): Uint8Array {
-  if (int === '0') {
-    return Buffer.from('');
-  }
-  const bigInt = new BN(int, 10);
-  const buf = bigInt.toArrayLike(Buffer, 'be', bigInt.byteLength());
-  return Buffer.concat([Buffer.from('00', 'hex'), buf]);
-}
-
 export class MyelClient {
   // libp2p is our p2p networking interface
   libp2p: P2P;
   // blockstore stores the retrieved blocks
   blocks: Blockstore;
-  // filRPC communicates with a Filecoin node to send chain messages
-  filRPC: FilRPC;
+  // signer handles keys and signatures
+  signer: Signer;
+  // paychMgr manages payments
+  paychMgr: PaychMgr;
+  // address to use by default when paying for things
+  defaultAddress: Address;
 
   // data transfer request ID. It is currently used for deal ID too. Based on Date for better uniqueness.
   _dtReqId: number = Date.now();
@@ -277,10 +276,14 @@ export class MyelClient {
     this.libp2p = options.libp2p;
     this.blocks = options.blocks;
 
-    const url =
-      options.lotusUrl ||
-      'wss://1jPq2Ky6ijDj97A7sTR9Q8eswuo:9ce30a3bbcdf2b9c2aba5eba4f590fa5@filecoin.infura.io';
-    this.filRPC = new FilRPC(url);
+    this.signer = new Secp256k1Signer();
+    this.defaultAddress = this.signer.genPrivate();
+
+    const url = options.lotusUrl || 'wss://infura.myel.cloud';
+    this.paychMgr = new PaychMgr({
+      filRPC: new FilRPC(url),
+      signer: this.signer,
+    });
 
     this.libp2p.connectionManager.on('peer:connect', (conn: Connection) => {
       console.log(conn.remotePeer.toString());
@@ -315,10 +318,10 @@ export class MyelClient {
       Params: {
         Selector: sel,
         PieceCID: null,
-        PricePerByte: encodeBigInt('0'),
+        PricePerByte: encodeAsBigInt('0'),
         PaymentInterval: 0,
         PaymentIntervalIncrease: 0,
-        UnsealPrice: encodeBigInt('0'),
+        UnsealPrice: encodeAsBigInt('0'),
       },
     };
     return {
@@ -492,6 +495,17 @@ export class MyelClient {
     } catch (e) {
       console.log(e);
     }
+  }
+
+  // for now importing a new key sets it as default so it will be used
+  // for all future payment operations.
+  importKey(key: string): Address {
+    this.defaultAddress = this.signer.toPublic(key);
+    return this.defaultAddress;
+  }
+
+  async testPayCh(to: Address, amt: number) {
+    await this.paychMgr.getChannel(this.defaultAddress, to, new BN(amt, 10));
   }
 
   load(

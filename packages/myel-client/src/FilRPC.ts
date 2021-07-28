@@ -3,23 +3,38 @@ type InflightRequest = {
   payload: string;
 };
 
+export interface RPCProvider {
+  send: (method: string, params?: Array<any>) => Promise<any>;
+  subscribe: (
+    method: string,
+    params: Array<any>,
+    processFunc: (result: any) => void
+  ) => Promise<string>;
+}
+
 export class FilRPC {
-  readonly _websocket: WebSocket;
-  readonly _requests: {[name: string]: InflightRequest};
-  readonly _subscrib: {[name: string]: (result: any) => void};
+  _url: string;
+  _websocket?: WebSocket;
+  readonly _requests: {[name: string]: InflightRequest} = {};
+  readonly _subscrib: {[name: string]: (result: any) => void} = {};
 
   _id: number = 0;
   _wsReady: boolean = false;
 
   constructor(url: string) {
+    this._url = url;
+    if (/ws/.test(url)) {
+      this.openWebsocket(url);
+    }
+  }
+
+  openWebsocket(url: string) {
     this._websocket = new WebSocket(url);
-    this._requests = {};
-    this._subscrib = {};
 
     this._websocket.onopen = () => {
       this._wsReady = true;
       Object.keys(this._requests).forEach((id) => {
-        this._websocket.send(this._requests[id].payload);
+        this._websocket!.send(this._requests[id].payload);
       });
     };
 
@@ -56,24 +71,36 @@ export class FilRPC {
     const rid = this._id++;
 
     return new Promise((resolve, reject) => {
-      function callback(error: Error | null, result: any) {
-        if (error) {
-          return reject(error);
-        }
-        return resolve(result);
-      }
-
       const payload = JSON.stringify({
-        method: method,
+        method: 'Filecoin.' + method,
         params: params,
         id: rid,
         jsonrpc: '2.0',
       });
 
-      this._requests[String(rid)] = {callback, payload};
+      if (this._websocket && this._wsReady) {
+        function callback(error: Error | null, result: any) {
+          if (error) {
+            return reject(error);
+          }
+          return resolve(result);
+        }
 
-      if (this._wsReady) {
+        this._requests[String(rid)] = {callback, payload};
         this._websocket.send(payload);
+      } else {
+        fetch(this._url, {
+          method: 'POST',
+          body: payload,
+        })
+          .then((res) => res.json())
+          .then((decoded) => {
+            if (decoded.error) {
+              reject(decoded.error);
+            }
+            resolve(decoded.result);
+          })
+          .catch(reject);
       }
     });
   }
@@ -82,8 +109,9 @@ export class FilRPC {
     method: string,
     params: Array<any>,
     processFunc: (result: any) => void
-  ): Promise<void> {
+  ): Promise<string> {
     const subID = await this.send(method, params);
     this._subscrib[String(subID)] = processFunc;
+    return String(subID);
   }
 }

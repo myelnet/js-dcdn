@@ -10,12 +10,15 @@ import {CID} from 'multiformats';
 import {MyelClient, allSelector} from 'myel-client';
 import {Multiaddr} from 'multiaddr';
 import {MemoryBlockstore} from 'interface-blockstore';
+import {newFromString} from '@glif/filecoin-address';
 
 type DataTransfer = {
   id: string;
   loaded: boolean;
   request: (peerId: PeerId, root: CID) => void;
   dial: (addr: Multiaddr) => void;
+  importKey: (key: string) => string;
+  testPayCh: () => void;
   libp2p?: Libp2p;
 };
 
@@ -41,7 +44,11 @@ export const useDT = (): DataTransfer => {
       });
 
       await libp2p.start();
-      client.current = new MyelClient({libp2p, blocks: new MemoryBlockstore()});
+      client.current = new MyelClient({
+        libp2p,
+        blocks: new MemoryBlockstore(),
+        lotusUrl: 'https://infura.myel.cloud',
+      });
       setNode(libp2p);
     } catch (e) {
       console.log(e);
@@ -74,18 +81,31 @@ export const useDT = (): DataTransfer => {
     if (!client.current) return;
   };
 
+  const importKey = (key: string): string => {
+    return client.current.importKey(key).toString();
+  };
+
+  const testPayCh = () => {
+    const addr = newFromString('f1h6ofsksoxg4muvsrkixf5xjt7kxs6bm7ouk3gha');
+    client.current.testPayCh(addr, 100);
+  };
+
   return node
     ? {
         id: node.peerId.toB58String(),
         loaded: true,
         request,
         libp2p: node,
+        importKey,
+        testPayCh,
         dial,
       }
     : {
         id: '',
         loaded: false,
         request,
+        importKey,
+        testPayCh,
         dial,
       };
 };

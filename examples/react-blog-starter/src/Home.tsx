@@ -10,7 +10,8 @@ import {CID, bytes} from 'multiformats';
 
 export default function Home() {
   const [cid, setCid] = useState<string | null>(null);
-  const [peerAddr, setPeerAddr] = useState<string>('');
+  const [privkey, setPrivkey] = useState<string>('');
+  const [address, setAddress] = useState<string>('');
   const dt = useDT();
 
   const onDrop = useCallback((files: File[]) => {
@@ -23,17 +24,11 @@ export default function Home() {
   }, []);
   const {getRootProps, getInputProps, isDragActive} = useDropzone({onDrop});
 
-  const handleEcho = () => {
-    if (!dt.libp2p || !peerAddr) {
+  const handleImportKey = () => {
+    if (privkey === '') {
       return;
     }
-    const addr = multiaddr(peerAddr);
-    const pidStr = addr.getPeerId();
-    if (!pidStr) {
-      return;
-    }
-    const pid = PeerId.createFromB58String(pidStr);
-    dt.libp2p.peerStore.addressBook.set(pid, [addr]);
+    setAddress(dt.importKey(privkey));
   };
 
   const handleDial = () => {
@@ -93,23 +88,27 @@ export default function Home() {
           </div>
 
           <div className={styles.card}>
-            <h2>Echo &rarr;</h2>
-            <p>Send echo message to peer:</p>
+            <h2>Import address &rarr;</h2>
+            <p>
+              <small>
+                <code>{address}</code>
+              </small>
+            </p>
             <div className={styles.cardRow}>
               <input
                 type="text"
-                name="addrs"
-                value={peerAddr}
-                placeholder="/ip4/127.0.0.1/tcp/60834/http/p2p-webrtc-direct/p2p/12D3KooWF4Tda3GXUAegZ4Qt5yzG6qQEjWt9Z2N5NVkunzsn8Zaf"
-                onChange={(e) => setPeerAddr(e.target.value)}
+                name="privkey"
+                value={privkey}
+                placeholder="base64 encoded private key"
+                onChange={(e) => setPrivkey(e.target.value)}
               />
-              <button onClick={handleEcho}>Send</button>
+              <button onClick={handleImportKey}>Import</button>
             </div>
           </div>
 
-          <div className={styles.card} onClick={handleDial}>
-            <h2>Dial &rarr;</h2>
-            <p>Dial peer at address</p>
+          <div className={styles.card} onClick={dt.testPayCh}>
+            <h2>Pay &rarr;</h2>
+            <p>Create new payment channel</p>
           </div>
         </div>
       </main>
