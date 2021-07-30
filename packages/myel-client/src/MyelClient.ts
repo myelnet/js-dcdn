@@ -504,11 +504,6 @@ export class MyelClient {
     return this.defaultAddress;
   }
 
-  async testPayCh(to: Address, amt: number) {
-    // await this.paychMgr.getChannel(this.defaultAddress, to, new BN(amt, 10));
-    await this.paychMgr.getChannelState(to);
-  }
-
   load(
     from: PeerId,
     root: CID,

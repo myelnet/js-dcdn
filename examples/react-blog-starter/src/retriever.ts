@@ -87,7 +87,7 @@ export const useDT = (): DataTransfer => {
 
   const testPayCh = () => {
     const addr = newFromString('f2g2ebqmj3yl5nwzcoj2tub3k4jxirzt2lpmg3f5y');
-    client.current.testPayCh(addr, 100);
+    // client.current.testPayCh(addr, 100);
   };
 
   return node

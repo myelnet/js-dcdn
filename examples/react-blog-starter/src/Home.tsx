@@ -111,6 +111,7 @@ export default function Home() {
             <p>Create new payment channel</p>
           </div>
         </div>
+        <img src="/penguin.jpg" alt="Penguin" />
       </main>
 
       <footer className={styles.footer}>
