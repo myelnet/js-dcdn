@@ -32,18 +32,20 @@ class MockRPCProvider {
 }
 
 describe('paych', () => {
-  test('sign and verify message', () => {
+  test('signs and verifies message', async () => {
+    const rpc = new MockRPCProvider();
     const signer = new Secp256k1Signer();
     const from = signer.genPrivate();
     const to = signer.genPrivate();
 
-    const mb = new MessageBuilder(from);
-    const msg = mb.create(to, new BN(10, 10));
-    msg.setGasParams({
+    const mb = new MessageBuilder(from, rpc, signer);
+    const msg = mb.createPayCh(to, new BN(10));
+    rpc.results.set('GasEstimateMessageGas', {
       GasFeeCap: '1401032939',
       GasLimit: 785460,
       GasPremium: '100680',
     });
+    await msg.estimateGas();
 
     const sig = signer.sign(from, msg.toCid().bytes);
 
@@ -82,6 +84,93 @@ describe('paych', () => {
 
     const ch = await mgr.getChannel(from, to, new BN(1, 10));
     expect(ch.toString()).toBe('f2kg3awbapuij6zbory6zlvpd5ob6dhqrzlr2ekgq');
+  });
+
+  test('vouchers', async () => {
+    const rpc = new MockRPCProvider();
+    rpc.results.set('MpoolGetNonce', 1);
+
+    // this call returns all the message fields too but we don't care about them
+    rpc.results.set('GasEstimateMessageGas', {
+      GasFeeCap: '1401032939',
+      GasLimit: 785460,
+      GasPremium: '100680',
+    });
+
+    const signer = new Secp256k1Signer();
+    const from = signer.genPrivate();
+    const to = signer.genPrivate();
+    const mgr = new PaychMgr({filRPC: rpc, signer, msgTimeout: 1});
+
+    const idaddr = newIDAddress(101);
+    const chaddr = newActorAddress(bytes.fromString('paych actor'));
+
+    rpc.results.set('StateSearchMsg', {
+      Receipt: {
+        ExitCode: 0,
+        Return: Buffer.from(encode([idaddr.str, chaddr.str])).toString(
+          'base64'
+        ),
+      },
+    });
+
+    const ch = await mgr.getChannel(from, to, new BN(10));
+
+    rpc.results.set('StateReadState', {
+      Balance: '10',
+      Code: {
+        '/': 'bafy2bzacedijw74yui7otvo63nfl3hdq2vdzuy7wx2tnptwed6zml4vvz7wee',
+      },
+      State: {
+        From: 'f019587',
+        LaneStates: {
+          '/': 'bafy2bzacedijw74yui7otvo63nfl3hdq2vdzuy7wx2tnptwed6zml4vvz7wee',
+        },
+        MinSettleHeight: 0,
+        SettlingAt: 0,
+        To: 'f01140342',
+        ToSend: '0',
+      },
+    });
+
+    // create a voucher for the total funds
+    const vouch1 = await mgr.createVoucher(ch, new BN(10), 1);
+    expect(vouch1.shortfall.isZero()).toBe(true);
+
+    // create a new voucher exceeding the balance
+    const vouch2 = await mgr.createVoucher(ch, new BN(5), 2);
+    expect(vouch2.shortfall.eq(new BN(5))).toBe(true);
+
+    // now add more funds
+    rpc.results.set('MpoolGetNonce', 2);
+    // (keep same gas params)
+    await mgr.getChannel(from, to, new BN(10));
+
+    rpc.results.set('StateReadState', {
+      Balance: '20',
+      Code: {
+        '/': 'bafy2bzacedijw74yui7otvo63nfl3hdq2vdzuy7wx2tnptwed6zml4vvz7wee',
+      },
+      State: {
+        From: 'f019587',
+        LaneStates: {
+          '/': 'bafy2bzacedijw74yui7otvo63nfl3hdq2vdzuy7wx2tnptwed6zml4vvz7wee',
+        },
+        MinSettleHeight: 0,
+        SettlingAt: 0,
+        To: 'f01140342',
+        ToSend: '0',
+      },
+    });
+
+    // now we can try the voucher again
+    const vouch3 = await mgr.createVoucher(ch, new BN(5), 2);
+    expect(vouch3.shortfall.isZero()).toBe(true);
+
+    const funds = await mgr.channelAvailableFunds(ch);
+    expect(funds.confirmedAmt.eq(new BN(20))).toBe(true);
+    expect(funds.redeemedAmt.eq(new BN(15))).toBe(true);
+    expect(funds.spendableAmt.eq(new BN(5))).toBe(true);
   });
 });
 
