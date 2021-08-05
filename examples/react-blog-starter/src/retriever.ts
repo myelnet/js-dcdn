@@ -44,11 +44,6 @@ export const useDT = (): DataTransfer => {
       });
 
       await libp2p.start();
-      client.current = new MyelClient({
-        libp2p,
-        blocks: new MemoryBlockstore(),
-        lotusUrl: 'https://infura.myel.cloud',
-      });
       setNode(libp2p);
     } catch (e) {
       console.log(e);

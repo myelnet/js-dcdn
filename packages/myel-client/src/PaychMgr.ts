@@ -32,7 +32,7 @@ interface SignedVoucher {
   channelAddr?: Address;
 }
 
-class FilecoinVoucher {
+export class FilecoinVoucher {
   amount: BigInt;
   lane: number;
   nonce?: number;
@@ -45,19 +45,30 @@ class FilecoinVoucher {
   }
 
   toBytes(signing?: boolean): Uint8Array {
-    return encode([
-      this.channelAddr,
+    return encode(this.toEncodable(signing));
+  }
+
+  toEncodable(signing?: boolean): any[] {
+    let sig = new Uint8Array(0);
+    if (this.signature) {
+      sig = new Uint8Array(this.signature.length + 1);
+      // signature type
+      sig.set(Uint8Array.from([1]), 0);
+      sig.set(this.signature, 1);
+    }
+    return [
+      this.channelAddr?.str,
       0, // TimeLockMin
       0, // TimeLockMax
-      new Uint8Array(0), // SecretPreimage
-      new Uint8Array(0), // Extra
+      Buffer.alloc(0), // SecretPreimage
+      null, // Extra
       this.lane,
       this.nonce,
       encodeBigInt(this.amount),
       0, // MinSettleHeight
       [], // Merges
-      signing ? Buffer.from('') : this.signature, // signature
-    ]);
+      signing ? null : sig, // signature
+    ];
   }
 }
 
@@ -269,7 +280,7 @@ export class MessageBuilder {
   }
 
   createPayCh(to: Address, amount: BigInt): FilecoinMessage {
-    const constructorParams = encode([to.str, this.from.str]);
+    const constructorParams = encode([this.from.str, to.str]);
     const paychCode = CID.create(
       1,
       raw.code,
@@ -402,7 +413,7 @@ export class PayCh {
           {'/': cid.toString()},
         ]);
         // if there's a receipt the message was probably executed
-        if (lookup.Receipt) {
+        if (lookup?.Receipt) {
           return lookup;
         }
       } catch (e) {
@@ -447,8 +458,9 @@ export class PayCh {
     voucher.channelAddr = this.addr;
     voucher.nonce = this._nextNonceForLane(voucher.lane);
 
+    const vbytes = voucher.toBytes(true);
     // right now channels are controlled by whoever is the sender
-    voucher.signature = this.signer.sign(this.from, voucher.toBytes(true));
+    voucher.signature = this.signer.sign(this.from, vbytes);
 
     const state = await this.loadActorState();
     const redeemed = this._totalRedeemedWithVoucher(voucher);

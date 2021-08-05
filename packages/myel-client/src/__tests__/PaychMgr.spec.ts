@@ -2,34 +2,14 @@ import {
   newSecp256k1Address,
   newIDAddress,
   newActorAddress,
+  decode as decodeAddress,
 } from '@glif/filecoin-address';
 import {BN} from 'bn.js';
 import {bytes} from 'multiformats';
 import {encode} from '@ipld/dag-cbor';
-import {PaychMgr, PayCh, MessageBuilder} from '../PaychMgr';
+import {PaychMgr, PayCh, MessageBuilder, FilecoinVoucher} from '../PaychMgr';
 import {Secp256k1Signer} from '../Signer';
-
-class MockRPCProvider {
-  results: Map<string, any> = new Map();
-  callbacks: Map<string, (result: any) => void> = new Map();
-  send(method: string, params?: Array<any>): Promise<any> {
-    const result = this.results.get(method);
-    return Promise.resolve(result);
-  }
-  async subscribe(
-    method: string,
-    params: Array<any>,
-    processFunc: (result: any) => void
-  ): Promise<string> {
-    this.callbacks.set(method, processFunc);
-    return Promise.resolve('');
-  }
-  trigger(method: string, result: any) {
-    const cb = this.callbacks.get(method);
-    if (!cb) throw new Error('no callback registered');
-    cb(result);
-  }
-}
+import {MockRPCProvider} from './utils';
 
 describe('paych', () => {
   test('signs and verifies message', async () => {
@@ -171,6 +151,29 @@ describe('paych', () => {
     expect(funds.confirmedAmt.eq(new BN(20))).toBe(true);
     expect(funds.redeemedAmt.eq(new BN(15))).toBe(true);
     expect(funds.spendableAmt.eq(new BN(5))).toBe(true);
+  });
+
+  test('encode voucher', () => {
+    const voucher = new FilecoinVoucher(new BN(1214), 0);
+    voucher.channelAddr = decodeAddress(
+      'f2s3tpuynlyzpdgiexvucmebrs2of4jrfepgtg76y'
+    );
+    voucher.nonce = 1;
+    expect(bytes.toHex(voucher.toBytes(true))).toEqual(
+      '8b550296e6fa61abc65e332097ad04c20632d38bc4c4a4000040f60001430004be0080f6'
+    );
+
+    const signature = bytes.fromHex(
+      'ba8e89e9b521827c9fd130744924a72cf89f2b6c727b71f42ef7e1acdbe170c50b89b1c0bd41ab4a02c50b4cbd430d327bd72c52804415049595561147150ff201'
+    );
+    const sig = new Uint8Array(signature.length + 1);
+    // signature type
+    sig.set(Uint8Array.from([1]), 0);
+    sig.set(signature, 1);
+
+    expect(bytes.toHex(encode(sig))).toEqual(
+      '584201ba8e89e9b521827c9fd130744924a72cf89f2b6c727b71f42ef7e1acdbe170c50b89b1c0bd41ab4a02c50b4cbd430d327bd72c52804415049595561147150ff201'
+    );
   });
 });
 
