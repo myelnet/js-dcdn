@@ -1,11 +1,12 @@
 import {MemoryBlockstore} from 'interface-blockstore';
-import {MyelClient, allSelector, ChannelStatus} from '../MyelClient';
+import {MyelClient, allSelector} from '../MyelClient';
 import {MockRPCProvider, MockLibp2p} from './utils';
 import PeerId from 'peer-id';
 import {CID, bytes} from 'multiformats';
 import {BN} from 'bn.js';
 import {newIDAddress, newActorAddress} from '@glif/filecoin-address';
 import {encode} from '@ipld/dag-cbor';
+import {ChannelState, DealState} from '../fsm';
 
 const gsMsg1 = bytes.fromHex(
   '1aaa04100e1ab4010a2666696c2f646174612d7472616e736665722f696e636f6d696e672d726571756573742f312e31128901a36449735271f46752657175657374f668526573706f6e7365a66454797065006441637074f56450617573f4665866657249441b0000017b0bb0870d6456526573a466537461747573066249441b0000017b0bb0870d6b5061796d656e744f77656440674d6573736167656064565479707752657472696576616c4465616c526573706f6e73652f311aa3010a1566696c2f646174612d7472616e736665722f312e31128901a36449735271f46752657175657374f668526573706f6e7365a66454797065006441637074f56450617573f4665866657249441b0000017b0bb0870d6456526573a466537461747573066249441b0000017b0bb0870d6b5061796d656e744f77656440674d6573736167656064565479707752657472696576616c4465616c526573706f6e73652f311a680a1166696c2f646174612d7472616e73666572125383f4f68600f5f41b0000017b0bb0870da466537461747573066249441b0000017b0bb0870d6b5061796d656e744f77656440674d657373616765607752657472696576616c4465616c526573706f6e73652f311a5f0a1b677261706873796e632f726573706f6e73652d6d65746164617461124081a2646c696e6bd82a5827000171a0e402200a2439495cfb5eafbb79669f644ca2c5a3d31b28e96c424cde5dd0e540a7d9486c626c6f636b50726573656e74f522610a060171a0e402201257a16b446c5f69636f6e2e737667a3634b65796b446c5f69636f6e2e7376676556616c7565d82a5827000155a0e40220ff51b469c4722121632236eee2a7c20325a5c03c4a0b3739958a02e5b701ccb56453697a65190467'
@@ -59,19 +60,24 @@ describe('MyelClient', () => {
 
     const chid = client.load(offer, allSelector);
 
-    expect(client.getChannelState(chid).status).toBe('Created');
+    expect(client.getChannelState(chid).matches('waitForAcceptance')).toBe(
+      true
+    );
 
     await client._handleGraphsyncMsg(ppid, gsMsg1);
 
-    expect(client.getChannelState(chid).status).toBe('BlockReceived');
+    expect(client.getChannelState(chid).matches('ongoing')).toBe(true);
+    expect(client.getChannelState(chid).context.received).toBe(87);
 
     await client._handleGraphsyncMsg(ppid, gsMsg2);
 
-    expect(client.getChannelState(chid).status).toBe('BlockReceived');
+    expect(client.getChannelState(chid).matches('ongoing')).toBe(true);
+    expect(client.getChannelState(chid).context.received).toBe(1214);
+    expect(client.getChannelState(chid).context.allReceived).toBe(true);
 
     await client._handleDataTransferMsg(ppid, dtMsgCompleted);
 
-    expect(client.getChannelState(chid).status).toBe('Completed');
+    expect(client.getChannelState(chid).matches('completed')).toBe(true);
   });
 
   test('handles a free transfer async', async () => {
@@ -116,10 +122,12 @@ describe('MyelClient', () => {
         .then(() => client._handleDataTransferMsg(ppid, dtMsgCompleted)),
     ]);
 
-    expect(state[0].status).toBe('Completed');
+    expect(state[0].matches('completed')).toBe(true);
+    expect(state[0].context.received).toBe(1214);
+    expect(state[0].context.allReceived).toBe(true);
   });
 
-  test('handles a paid transfer', async () => {
+  describe('handles a paid transfers', () => {
     const rpc = new MockRPCProvider();
 
     // prepare payment mocks
@@ -164,53 +172,114 @@ describe('MyelClient', () => {
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
       )
     );
-    const client = new MyelClient({
-      rpc,
-      blocks,
-      libp2p,
-      rpcMsgTimeout: 200,
-    });
-    client._dtReqId = 1627988723469;
-
-    const offer = {
-      id: '1',
-      peerAddr:
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
-      cid: CID.parse(
-        'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
-      ),
-      size: 1214,
-      paymentAddress: client.signer.genPrivate(),
-      minPricePerByte: new BN(1),
-      maxPaymentInterval: 1 << 20,
-      maxPaymentIntervalIncrease: 1 << 20,
-    };
-
     const ppid = PeerId.createFromB58String(
       '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
     );
 
-    await new Promise((resolve, reject) =>
-      client.load(offer, allSelector, (err, state) => {
-        expect(err).toBe(null);
-        switch (state.status) {
-          case ChannelStatus.Requested:
-            client._handleGraphsyncMsg(ppid, gsMsg1);
-            break;
-          case ChannelStatus.BlockReceived:
-            if (state.allReceived) {
-              client._handleDataTransferMsg(ppid, dtMsgPaymentReq);
-            } else {
-              client._handleGraphsyncMsg(ppid, gsMsg2);
+    test.each<[number, DealState['value']]>([
+      [300, 'completed'],
+      [0, 'completed'],
+    ])('whith timeout %i', async (timeout, endstate) => {
+      // start a new client each time as we're using the same request id
+      const client = new MyelClient({
+        rpc,
+        blocks,
+        libp2p,
+        rpcMsgTimeout: timeout,
+      });
+      client._dtReqId = 1627988723469;
+
+      const offer = {
+        id: '1',
+        peerAddr:
+          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
+        cid: CID.parse(
+          'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
+        ),
+        size: 1214,
+        paymentAddress: client.signer.genPrivate(),
+        minPricePerByte: new BN(1),
+        maxPaymentInterval: 1 << 20,
+        maxPaymentIntervalIncrease: 1 << 20,
+      };
+
+      const state: ChannelState = await new Promise((resolve, reject) =>
+        client.load(
+          offer,
+          allSelector,
+          (err: Error | null, state: ChannelState) => {
+            expect(err).toBe(null);
+            switch (state.value) {
+              case 'waitForAcceptance':
+                client._handleGraphsyncMsg(ppid, gsMsg1);
+                break;
+              case 'ongoing':
+                if (state.context.received === 87) {
+                  client._handleGraphsyncMsg(ppid, gsMsg2);
+                } else if (state.context.fundsSpent.gt(new BN(0))) {
+                  client._handleDataTransferMsg(ppid, dtMsgCompleted);
+                } else if (state.context.allReceived) {
+                  client._handleDataTransferMsg(ppid, dtMsgPaymentReq);
+                }
+                break;
+              case 'completed':
+                resolve(state);
             }
-            break;
-          case ChannelStatus.FundsSent:
-            client._handleDataTransferMsg(ppid, dtMsgCompleted);
-            break;
-          case ChannelStatus.Completed:
-            resolve(null);
-        }
-      })
-    );
+          }
+        )
+      );
+      expect(state.matches(endstate)).toBe(true);
+    });
+
+    test('immediate payment request', async () => {
+      const client = new MyelClient({
+        rpc,
+        blocks,
+        libp2p,
+        rpcMsgTimeout: 300,
+      });
+      client._dtReqId = 1627988723469;
+
+      const offer = {
+        id: '1',
+        peerAddr:
+          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
+        cid: CID.parse(
+          'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
+        ),
+        size: 1214,
+        paymentAddress: client.signer.genPrivate(),
+        minPricePerByte: new BN(1),
+        maxPaymentInterval: 1 << 20,
+        maxPaymentIntervalIncrease: 1 << 20,
+      };
+
+      const state: ChannelState = await new Promise((resolve, reject) =>
+        client.load(
+          offer,
+          allSelector,
+          (err: Error | null, state: ChannelState) => {
+            expect(err).toBe(null);
+            switch (state.value) {
+              case 'waitForAcceptance':
+                client._handleGraphsyncMsg(ppid, gsMsg1);
+                break;
+              case 'accepted':
+                client._handleGraphsyncMsg(ppid, gsMsg2);
+                client._handleDataTransferMsg(ppid, dtMsgPaymentReq);
+                break;
+              case 'ongoing':
+                if (state.context.fundsSpent.gt(new BN(0))) {
+                  client._handleDataTransferMsg(ppid, dtMsgCompleted);
+                }
+                break;
+              case 'completed':
+                resolve(state);
+            }
+          }
+        )
+      );
+      expect(state.matches('completed')).toBe(true);
+    });
   });
 });

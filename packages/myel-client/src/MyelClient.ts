@@ -19,6 +19,15 @@ import {Address} from '@glif/filecoin-address';
 import {RPCProvider} from './FilRPC';
 import {PaychMgr} from './PaychMgr';
 import {Signer, Secp256k1Signer} from './Signer';
+import {
+  createChannel,
+  Channel,
+  ChannelID,
+  DealContext,
+  Selector,
+  DealEvent,
+  ChannelState,
+} from './fsm';
 import {encodeBigInt, encodeAsBigInt} from './utils';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
@@ -122,64 +131,6 @@ type DealResponse = {
   Status: DealStatus;
   PaymentOwed: Uint8Array;
   Message: string;
-};
-
-type Selector = Object;
-
-type ChannelID = {
-  id: number;
-  initiator: PeerId;
-  responder: PeerId;
-};
-
-type Channel = {
-  callback: (err: Error | null, result: ChannelState) => void;
-  state: ChannelState;
-};
-
-type ChannelState = {
-  status: ChannelStatus;
-  root: CID;
-  selector: Selector;
-  received: number;
-  totalSize: number;
-  paidFor: number;
-  pricePerByte: BigInt;
-  paymentInterval: number;
-  paymentIntervalIncrease: number;
-  currentInterval: number;
-  allReceived: boolean;
-  fundsSpent: BigInt;
-  error?: Error;
-  providerPaymentAddress?: Address;
-  paymentInfo?: PaymentInfo;
-  fundsReq: Promise<void> | null;
-};
-
-export enum ChannelStatus {
-  // The channel was initialized but no request has been sent yet
-  Created = 'Created',
-  // We sent a Graphsync request message with an attached data transfer voucher
-  Requested = 'Requested',
-  // The responder has sent us a reponse voucher with a success status
-  Accepted = 'Accepted',
-  // We have received a block from a Graphsync message
-  BlockReceived = 'BlockReceived',
-  // We have created or added funds to a payment channel for this transfer
-  FundsLoaded = 'FundsLoaded',
-  // the responder stopped sending blocks until they receive valid payment
-  PaymentRequested = 'PaymentRequested',
-  // We sent a payment voucher with the funds for the next payment interval
-  FundsSent = 'FundsSent',
-  // We have received all blocks and sent all payments for this transfer
-  Completed = 'Completed',
-  // The transfer is interupted because something went wrong but we might still be able to fix it
-  Errored = 'Errored',
-}
-
-type PaymentInfo = {
-  chAddr: Address;
-  lane: number;
 };
 
 type TransferMessage = {
@@ -319,7 +270,7 @@ function encodeRequest(req: TransferRequest): Uint8Array {
   return enc;
 }
 
-function calcNextInterval(state: ChannelState): number {
+function calcNextInterval(state: DealContext): number {
   let intervalSize = state.paymentInterval;
   let nextInterval = 0;
   while (nextInterval <= state.currentInterval) {
@@ -436,10 +387,9 @@ export class MyelClient {
       initiator,
       responder,
     };
-    this._channels.set(chid, {
-      callback,
-      state: {
-        status: ChannelStatus.Created,
+    const ch = createChannel(
+      chid,
+      {
         root: offer.cid,
         selector,
         received: 0,
@@ -452,9 +402,31 @@ export class MyelClient {
         paymentIntervalIncrease: offer.maxPaymentIntervalIncrease,
         currentInterval: offer.maxPaymentInterval,
         providerPaymentAddress: offer.paymentAddress,
-        fundsReq: null,
       },
+      {
+        checkPayment: (ctx) => {
+          if (!ctx.paymentRequested) {
+            return;
+          }
+          this._validatePayment(chid, ctx.paymentRequested);
+        },
+        processPayment: (_, evt) => {
+          if (evt.type !== 'PAYMENT_AUTHORIZED') {
+            return;
+          }
+          this._processPayment(chid, evt.amt);
+        },
+      }
+    );
+    ch.subscribe((state) => {
+      if (state.matches('failure')) {
+        callback(new Error(state.context.error), state);
+      } else {
+        callback(null, state);
+      }
     });
+    ch.start();
+    this._channels.set(chid, ch);
     return chid;
   }
 
@@ -477,47 +449,55 @@ export class MyelClient {
 
   async _loadFunds(id: ChannelID) {
     console.log('loading funds');
-    const state = this.getChannelState(id);
-    if (!state.providerPaymentAddress) {
-      throw new Error('no payment address for the provider');
-    }
+    const {context} = this.getChannelState(id);
     try {
-      const funds = state.pricePerByte.mul(new BN(state.totalSize));
-      console.log('loaded', funds.toNumber());
+      if (!context.providerPaymentAddress) {
+        throw new Error('no payment address for the provider');
+      }
+
+      const funds = context.pricePerByte.mul(new BN(context.totalSize));
       const chAddr = await this.paychMgr.getChannel(
         this.defaultAddress,
-        state.providerPaymentAddress,
+        context.providerPaymentAddress,
         funds
       );
       const lane = this.paychMgr.allocateLane(chAddr);
-      this.setChannelState(id, {
-        status: ChannelStatus.FundsLoaded,
-        fundsReq: null,
+      this.updateChannel(id, {
+        type: 'PAYCH_READY',
         paymentInfo: {
           chAddr,
           lane,
         },
       });
     } catch (e) {
-      this.setChannelState(id, {
-        status: ChannelStatus.Errored,
-        error: e,
-        fundsReq: null,
+      this.updateChannel(id, {
+        type: 'PAYCH_FAILED',
+        error: e.message,
       });
     }
   }
 
-  async _processPayment(id: ChannelID, amt: BigInt) {
-    const state = this.getChannelState(id);
-    if (!state.paymentInfo) {
-      throw new Error('could not process payment: no payment info');
+  _validatePayment(id: ChannelID, owed: BigInt) {
+    const {context} = this.getChannelState(id);
+    // validate we've received all the bytes we're getting charged for
+    const total = context.pricePerByte.mul(new BN(context.received));
+    if (context.paymentInfo && owed.lte(total.sub(context.fundsSpent))) {
+      this.updateChannel(id, {type: 'PAYMENT_AUTHORIZED', amt: owed});
     }
+  }
+
+  async _processPayment(id: ChannelID, amt: BigInt) {
+    const {context} = this.getChannelState(id);
     try {
+      if (!context.paymentInfo) {
+        throw new Error('could not process payment: no payment info');
+      }
+
       console.log('owed', amt.toNumber());
       const {voucher, shortfall} = await this.paychMgr.createVoucher(
-        state.paymentInfo.chAddr,
+        context.paymentInfo.chAddr,
         amt,
-        state.paymentInfo.lane
+        context.paymentInfo.lane
       );
       if (shortfall.gt(new BN(0))) {
         // TODO: recover
@@ -527,20 +507,20 @@ export class MyelClient {
         Type: 4,
         Vouch: {
           ID: id.id,
-          PaymentChannel: state.paymentInfo.chAddr.str,
+          PaymentChannel: context.paymentInfo.chAddr.str,
           PaymentVoucher: voucher.toEncodable(false),
         },
         VTyp: 'RetrievalDealPayment/1',
         XferID: id.id,
       });
-      this.setChannelState(id, {
-        status: ChannelStatus.FundsSent,
-        fundsSpent: state.fundsSpent.add(amt),
+      this.updateChannel(id, {
+        type: 'PAYMENT_SENT',
+        amt,
       });
     } catch (e) {
-      this.setChannelState(id, {
-        status: ChannelStatus.Errored,
-        error: e,
+      this.updateChannel(id, {
+        type: 'PAYMENT_FAILED',
+        error: e.message,
       });
     }
   }
@@ -570,10 +550,7 @@ export class MyelClient {
           gsStatus = gsres.status;
           switch (gsStatus) {
             case GraphsyncResponseStatus.RequestFailedUnknown:
-              this.setChannelState(chid, {
-                status: ChannelStatus.Errored,
-                error: new Error('Request refused'),
-              });
+              // TODO: handle error
               return;
             case GraphsyncResponseStatus.PartialResponse:
               const extData = gsres.extensions[DT_EXTENSION];
@@ -586,13 +563,10 @@ export class MyelClient {
               // check the voucher response status
               switch (dtres.Response?.VRes?.Status) {
                 case DealStatus.Accepted:
-                  const state: Partial<ChannelState> = {
-                    status: ChannelStatus.Accepted,
-                  };
-                  if (chState.pricePerByte.gt(new BN(0))) {
-                    state.fundsReq = this._loadFunds(chid);
+                  this.updateChannel(chid, 'DEAL_ACCEPTED');
+                  if (chState.context.pricePerByte.gt(new BN(0))) {
+                    this._loadFunds(chid);
                   }
-                  this.setChannelState(chid, state);
                   break;
                 default:
                   console.log('Data transfer unknown response', dtres);
@@ -602,17 +576,10 @@ export class MyelClient {
             case GraphsyncResponseStatus.RequestCompletedPartial:
               // this means graphsync could not find all the blocks but still got some
               // TODO: we need to register which blocks we have so we can restart a transfer with someone else
-              this.setChannelState(chid, {
-                status: ChannelStatus.Errored,
-                error: new Error('Request incomplete'),
-              });
               break;
           }
         } catch (e) {
-          this.setChannelState(chid, {
-            status: ChannelStatus.Errored,
-            error: e,
-          });
+          // TODO: error handling
         }
       }
     }
@@ -628,18 +595,16 @@ export class MyelClient {
         try {
           const cid = await this._processBlock(block);
           console.log('processed block', cid.toString());
-          // track the amount of bytes received
-          this.setChannelState(chanId, (state) => ({
-            status: ChannelStatus.BlockReceived,
-            received: state.received + block.data.byteLength,
-            allReceived:
-              gsStatus === GraphsyncResponseStatus.RequestCompletedFull,
-          }));
-        } catch (e) {
-          this.setChannelState(chanId, {
-            status: ChannelStatus.Errored,
-            error: e,
+
+          this.updateChannel(chanId, {
+            type:
+              gsStatus === GraphsyncResponseStatus.RequestCompletedFull
+                ? 'ALL_BLOCKS_RECEIVED'
+                : 'BLOCK_RECEIVED',
+            received: block.data.byteLength,
           });
+        } catch (e) {
+          // TODO
         }
       }
     }
@@ -664,23 +629,14 @@ export class MyelClient {
 
       switch (response.Status) {
         case DealStatus.Completed:
-          this.setChannelState(chid, {
-            status: ChannelStatus.Completed,
-          });
+          this.updateChannel(chid, 'TRANSFER_COMPLETED');
           break;
         case DealStatus.FundsNeeded:
         case DealStatus.FundsNeededLastPayment:
-          const state = this.getChannelState(chid);
           console.log('funds needed: queue payment');
-          // wait for any ongoing funds request
-          await state.fundsReq;
-          // TODO: this is not safe because the provider could send a wrong amount
-          // and we'd pay it so we need to wait till all the blocks have been processed,
-          // verify them and then send payment accordingly.
-          this._processPayment(chid, new BN(response.PaymentOwed));
-          this.setChannelState(chid, {
-            fundsReq: null,
-            status: ChannelStatus.PaymentRequested,
+          this.updateChannel(chid, {
+            type: 'PAYMENT_REQUESTED',
+            owed: new BN(response.PaymentOwed),
           });
           break;
         default:
@@ -690,10 +646,7 @@ export class MyelClient {
     // if response is not accepted, voucher revalidation failed
     if (!res.Acpt) {
       const err = res.VRes?.Message ?? 'Voucher invalid';
-      this.setChannelState(chid, {
-        status: ChannelStatus.Errored,
-        error: new Error(err),
-      });
+      // TODO
     }
   }
 
@@ -757,32 +710,12 @@ export class MyelClient {
     return this.defaultAddress;
   }
 
-  // setChannelState merges a partial state into a channel state for the given ID
-  // it can also take a function to return values based on previous state
-  setChannelState(
-    id: ChannelID,
-    state:
-      | Partial<ChannelState>
-      | ((prevState: ChannelState) => Partial<ChannelState>)
-  ) {
+  updateChannel(id: ChannelID, event: DealEvent | DealEvent['type']) {
     const ch = this._channels.get(id);
     if (!ch) {
       throw ErrChannelNotFound;
     }
-    const nextState = {
-      ...ch.state,
-      ...(typeof state === 'function' ? state(ch.state) : state),
-    };
-    if (nextState.status === ChannelStatus.Errored) {
-      ch.callback(
-        nextState.error ?? new Error('Something went wrong'),
-        nextState
-      );
-    } else {
-      ch.callback(null, nextState);
-    }
-    ch.state = nextState;
-    this._channels.set(id, ch);
+    ch.send(event);
   }
 
   getChannelState(id: ChannelID): ChannelState {
@@ -840,9 +773,8 @@ export class MyelClient {
           },
         },
       ],
-    }).then(() =>
-      this.setChannelState(chid, {status: ChannelStatus.Requested})
-    );
+    });
+    this.updateChannel(chid, 'DEAL_PROPOSED');
 
     return chid;
   }
@@ -856,7 +788,8 @@ export class MyelClient {
         if (err) {
           return reject(err);
         }
-        if (state.status === ChannelStatus.Completed) {
+        console.log('==>', state.value);
+        if (state.matches('completed')) {
           return resolve(state);
         }
         // TODO: maybe timeout or recover is something goes wrong?

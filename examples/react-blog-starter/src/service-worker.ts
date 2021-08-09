@@ -96,7 +96,7 @@ async function fetchContent(
     {
       id: '1',
       peerAddr:
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWJXBSMSn9FS1zsayZ6JK7b3HTaawNy7RKBqaWqiZbiqJb',
+        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWBkGuWBxem8SKD8vA5obRE2MoGYZbVKbofctxBZoDVQTi',
       cid: root,
       size: 1214,
       minPricePerByte: new BN(1),

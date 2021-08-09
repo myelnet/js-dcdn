@@ -31,6 +31,7 @@
     "@glif/filecoin-address": "^1.1.0",
     "@ipld/dag-cbor": "^6.0.5",
     "@multiformats/blake2": "^1.0.1",
+    "@xstate/fsm": "^1.6.1",
     "bl": "^5.0.0",
     "blakejs": "^1.1.1",
     "bn.js": "^5.2.0",
