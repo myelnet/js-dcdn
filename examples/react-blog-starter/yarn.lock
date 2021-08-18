@@ -1904,6 +1904,13 @@
   dependencies:
     multiformats "^9.0.0"
 
+"@ipld/dag-pb@^2.1.9":
+  version "2.1.9"
+  resolved "https://registry.yarnpkg.com/@ipld/dag-pb/-/dag-pb-2.1.9.tgz#823ca89168fa367e6b2f61255332f4113ad6f8c6"
+  integrity sha512-6p8vgm3jMB7IKO4CAdZV/rbhBo/YvNLmiEot1vjtJalmASM+9DLbFIzHV0CAHkwlSsv3/UTsV7UzfDb6dGTHLQ==
+  dependencies:
+    multiformats "^9.0.0"
+
 "@istanbuljs/load-nyc-config@^1.0.0":
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/@istanbuljs/load-nyc-config/-/load-nyc-config-1.1.0.tgz#fd3db1d59ecf7cf121e80650bb86712f9b55eced"
@@ -7547,7 +7554,7 @@ interface-datastore@^4.0.0:
     nanoid "^3.0.2"
     uint8arrays "^2.1.5"
 
-interface-datastore@^5.0.0:
+interface-datastore@^5.0.0, interface-datastore@^5.1.1:
   version "5.1.1"
   resolved "https://registry.yarnpkg.com/interface-datastore/-/interface-datastore-5.1.1.tgz#1e29e7ba41a97f52f34f6afc458c4422523bd17d"
   integrity sha512-HG/P3kr3N/51MfsW55Q692hD7kmegXobPaZOFu5rNWWeJ27tnes7L/yma3vylrvrTCEUpVgJYigDqHXFICdvRg==
@@ -7638,6 +7645,22 @@ ipfs-unixfs-exporter@^6.0.1:
   version "6.0.1"
   resolved "https://registry.yarnpkg.com/ipfs-unixfs-exporter/-/ipfs-unixfs-exporter-6.0.1.tgz#ab9fa220a4efb5964b1ea6ff24419441f60764ce"
   integrity sha512-lVmCIByxJV5llUHBLC/iRFLP/s07iJl0hA5oofYP6SMUOeNiyZmY6ceMQnZHaFHRlkcg2giC0qnJvO2fNhdY5w==
+  dependencies:
+    "@ipld/dag-cbor" "^6.0.4"
+    "@ipld/dag-pb" "^2.0.2"
+    err-code "^3.0.1"
+    hamt-sharding "^2.0.0"
+    interface-blockstore "^1.0.0"
+    ipfs-unixfs "^5.0.0"
+    it-last "^1.0.5"
+    multiformats "^9.4.2"
+    murmurhash3js-revisited "^3.0.0"
+    uint8arrays "^2.1.7"
+
+ipfs-unixfs-exporter@^6.0.2:
+  version "6.0.2"
+  resolved "https://registry.yarnpkg.com/ipfs-unixfs-exporter/-/ipfs-unixfs-exporter-6.0.2.tgz#7564c48e65b67c2657c9c52f7aa8c48e32cdb5ef"
+  integrity sha512-lOFC17fIaeaBvTzHVzea/U1xav3cnE0zCsO6KBG154HytEIxhHQtii+bbgM0Qtby2R9kQoXfM7OW8Vaa2jeZhQ==
   dependencies:
     "@ipld/dag-cbor" "^6.0.4"
     "@ipld/dag-pb" "^2.0.2"
@@ -10517,6 +10540,7 @@ myel-client@../../packages/myel-client/:
   dependencies:
     "@glif/filecoin-address" "^1.1.0"
     "@ipld/dag-cbor" "^6.0.5"
+    "@ipld/dag-pb" "^2.1.9"
     "@multiformats/blake2" "^1.0.1"
     "@xstate/fsm" "^1.6.1"
     bl "^5.0.0"
@@ -10524,12 +10548,17 @@ myel-client@../../packages/myel-client/:
     bn.js "^5.2.0"
     cborg "^1.3.5"
     cids "^1.1.7"
+    datastore-idb "^1.1.0"
     elliptic "^6.5.4"
     interface-blockstore "^1.0.0"
+    interface-datastore "^5.1.1"
+    ipfs-unixfs "^5.0.0"
+    ipfs-unixfs-exporter "^6.0.2"
     it-length-prefixed "^5.0.3"
     it-pipe "^1.1.0"
     libp2p "^0.31.7"
     libp2p-interfaces "^1.0.1"
+    mime-types "^2.1.32"
     multiformats "^9.0.4"
     peer-id "^0.15.1"
     protons "^2.0.1"

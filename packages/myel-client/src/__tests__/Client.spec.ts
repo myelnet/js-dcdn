@@ -1,5 +1,6 @@
 import {MemoryBlockstore} from 'interface-blockstore';
-import {MyelClient, allSelector} from '../MyelClient';
+import {Client} from '../Client';
+import {allSelector} from '../utils';
 import {MockRPCProvider, MockLibp2p} from './utils';
 import PeerId from 'peer-id';
 import {CID, bytes} from 'multiformats';
@@ -33,7 +34,7 @@ describe('MyelClient', () => {
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
       )
     );
-    const client = new MyelClient({
+    const client = new Client({
       rpc,
       blocks,
       libp2p,
@@ -88,7 +89,7 @@ describe('MyelClient', () => {
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
       )
     );
-    const client = new MyelClient({
+    const client = new Client({
       rpc,
       blocks,
       libp2p,
@@ -181,7 +182,7 @@ describe('MyelClient', () => {
       [0, 'completed'],
     ])('whith timeout %i', async (timeout, endstate) => {
       // start a new client each time as we're using the same request id
-      const client = new MyelClient({
+      const client = new Client({
         rpc,
         blocks,
         libp2p,
@@ -232,7 +233,7 @@ describe('MyelClient', () => {
     });
 
     test('immediate payment request', async () => {
-      const client = new MyelClient({
+      const client = new Client({
         rpc,
         blocks,
         libp2p,

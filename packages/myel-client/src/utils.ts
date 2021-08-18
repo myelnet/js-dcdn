@@ -12,3 +12,24 @@ export function encodeBigInt(int: BN): Uint8Array {
   const buf = int.toArrayLike(Buffer, 'be', int.byteLength());
   return Buffer.concat([Buffer.from('00', 'hex'), buf]);
 }
+
+export const allSelector: Selector = {
+  R: {
+    l: {
+      none: {},
+    },
+    ':>': {
+      a: {
+        '>': {
+          '@': {},
+        },
+      },
+    },
+  },
+};
+
+export type Selector = Object;
+
+export function urlToSelector(url: string): Selector {
+  return allSelector;
+}

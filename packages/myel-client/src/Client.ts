@@ -5,6 +5,7 @@ import {decode, encode} from '@ipld/dag-cbor';
 import BufferList from 'bl/BufferList';
 import PeerId from 'peer-id';
 import {CID, hasher, bytes} from 'multiformats';
+import {sha256} from 'multiformats/hashes/sha2';
 import {multiaddr, Multiaddr} from 'multiaddr';
 // @ts-ignore (no types)
 import protons from 'protons';
@@ -24,11 +25,10 @@ import {
   Channel,
   ChannelID,
   DealContext,
-  Selector,
   DealEvent,
   ChannelState,
 } from './fsm';
-import {encodeBigInt, encodeAsBigInt} from './utils';
+import {encodeBigInt, encodeAsBigInt, Selector, urlToSelector} from './utils';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -75,14 +75,14 @@ interface Blockstore {
   has: (key: CID) => Promise<boolean>;
 }
 
-type MyelClientOptions = {
+type ClientOptions = {
   libp2p: P2P;
   blocks: Blockstore;
   rpc: RPCProvider;
   rpcMsgTimeout?: number;
 };
 
-type DealOffer = {
+export type DealOffer = {
   id: string;
   peerAddr: string;
   cid: CID;
@@ -247,21 +247,6 @@ message Message {
 }
 `);
 
-export const allSelector: Selector = {
-  R: {
-    l: {
-      none: {},
-    },
-    ':>': {
-      a: {
-        '>': {
-          '@': {},
-        },
-      },
-    },
-  },
-};
-
 function encodeRequest(req: TransferRequest): Uint8Array {
   const enc = encode({
     IsRq: true,
@@ -280,7 +265,7 @@ function calcNextInterval(state: DealContext): number {
   return nextInterval;
 }
 
-export class MyelClient {
+export class Client {
   // libp2p is our p2p networking interface
   libp2p: P2P;
   // blockstore stores the retrieved blocks
@@ -297,17 +282,18 @@ export class MyelClient {
   // graphsync request ID is incremented from 0. Uniqueness is not important across nodes.
   _gsReqId: number = 0;
   // channels are stateful communication channels between 2 peers.
-  _channels: Map<ChannelID, Channel> = new Map();
+  private readonly _channels: Map<ChannelID, Channel> = new Map();
   // keeps track of channels for a given graphsync request ID
-  _chanByGsReq: Map<number, ChannelID> = new Map();
+  private readonly _chanByGsReq: Map<number, ChannelID> = new Map();
   // keeps track of channels for a given transfer ID
-  _chanByDtReq: Map<number, ChannelID> = new Map();
+  private readonly _chanByDtReq: Map<number, ChannelID> = new Map();
   // hashers used by the blockstore to verify the incoming blocks. Currently hard coded but may be customizable.
-  _hashers: {[key: number]: hasher.MultihashHasher} = {
+  private readonly _hashers: {[key: number]: hasher.MultihashHasher} = {
     [blake2b256.code]: blake2b256,
+    [sha256.code]: sha256,
   };
 
-  constructor(options: MyelClientOptions) {
+  constructor(options: ClientOptions) {
     this.libp2p = options.libp2p;
     this.blocks = options.blocks;
 
@@ -448,7 +434,7 @@ export class MyelClient {
   }
 
   async _loadFunds(id: ChannelID) {
-    console.log('loading funds');
+    console.log('loading funds with address', this.defaultAddress.toString());
     const {context} = this.getChannelState(id);
     try {
       if (!context.providerPaymentAddress) {
@@ -461,6 +447,7 @@ export class MyelClient {
         context.providerPaymentAddress,
         funds
       );
+      console.log('loaded channel', chAddr.toString());
       const lane = this.paychMgr.allocateLane(chAddr);
       this.updateChannel(id, {
         type: 'PAYCH_READY',
@@ -470,6 +457,7 @@ export class MyelClient {
         },
       });
     } catch (e) {
+      console.log('failed to load channel', e);
       this.updateChannel(id, {
         type: 'PAYCH_FAILED',
         error: e.message,
@@ -549,9 +537,17 @@ export class MyelClient {
           const chState = this.getChannelState(chid);
           gsStatus = gsres.status;
           switch (gsStatus) {
-            case GraphsyncResponseStatus.RequestFailedUnknown:
+            case GraphsyncResponseStatus.RequestFailedUnknown: {
+              const extData = gsres.extensions[DT_EXTENSION];
+              if (!extData) {
+                continue;
+              }
+              const dtres: TransferMessage = decode(extData);
+              console.log('request failed', dtres);
+
               // TODO: handle error
               return;
+            }
             case GraphsyncResponseStatus.PartialResponse:
               const extData = gsres.extensions[DT_EXTENSION];
               if (!extData) {
@@ -573,6 +569,34 @@ export class MyelClient {
                   continue;
               }
               break;
+            case GraphsyncResponseStatus.RequestPaused: {
+              const extData = gsres.extensions[DT_EXTENSION];
+              if (!extData) {
+                continue;
+              }
+              const dtres: TransferMessage = decode(extData);
+              console.log('request paused', dtres);
+
+              if (!dtres.Response) {
+                continue;
+              }
+              const response: DealResponse = dtres.Response.VRes;
+
+              switch (response.Status) {
+                case DealStatus.FundsNeeded:
+                case DealStatus.FundsNeededLastPayment:
+                  console.log('funds needed: queue payment');
+                  this.updateChannel(chid, {
+                    type: 'PAYMENT_REQUESTED',
+                    owed: new BN(response.PaymentOwed),
+                  });
+                  break;
+                default:
+                // channel.callback(new Error('transfer failed'), channel.state);
+              }
+
+              break;
+            }
             case GraphsyncResponseStatus.RequestCompletedPartial:
               // this means graphsync could not find all the blocks but still got some
               // TODO: we need to register which blocks we have so we can restart a transfer with someone else
@@ -611,8 +635,8 @@ export class MyelClient {
   }
 
   async _handleDataTransferMsg(from: PeerId, data: Uint8Array) {
-    console.log('new data transfer msg');
     const msg: TransferMessage = decode(data);
+    console.log('new data transfer msg', msg);
 
     const res = msg.Response;
     if (!res) {

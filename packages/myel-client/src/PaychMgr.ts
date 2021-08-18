@@ -434,6 +434,7 @@ export class PayCh {
     }
     switch (lookup.Receipt.ExitCode) {
       case ExitCode.Ok:
+        console.log('exit code: Ok');
         const execReturn: PaychExecReturn = decode(
           Buffer.from(lookup.Receipt.Return, 'base64')
         );

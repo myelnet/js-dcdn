@@ -9,8 +9,7 @@ import {
 import BN from 'bn.js';
 import PeerId from 'peer-id';
 import {Address} from '@glif/filecoin-address';
-
-export type Selector = Object;
+import {Selector} from './utils';
 
 type PaymentInfo = {
   chAddr: Address;
@@ -64,6 +63,7 @@ export type DealState =
   | {value: 'failure'; context: DealContext & {error: string}}
   | {value: 'validatePayment'; context: DealContext}
   | {value: 'sendPayment'; context: DealContext}
+  | {value: 'pendingLastBlocks'; context: DealContext}
   | {value: 'completed'; context: DealContext};
 
 export type Channel = StateMachine.Service<DealContext, DealEvent, DealState>;
@@ -129,6 +129,9 @@ export function createChannel(
                 target: 'ongoing',
                 actions: [receiveBlock, receiveAllBlocks],
               },
+              TRANSFER_COMPLETED: {
+                target: 'pendingLastBlocks',
+              },
             },
           },
           // Payment validation state is entered when a responder sends a request for payment. In this case we must
@@ -185,6 +188,18 @@ export function createChannel(
                 actions: [receiveBlock, receiveAllBlocks],
               },
               TRANSFER_COMPLETED: 'completed',
+            },
+          },
+          pendingLastBlocks: {
+            on: {
+              BLOCK_RECEIVED: {
+                target: 'pendingLastBlocks',
+                actions: receiveBlock,
+              },
+              ALL_BLOCKS_RECEIVED: {
+                target: 'completed',
+                actions: [receiveBlock, receiveAllBlocks],
+              },
             },
           },
           // rejected transfers didn't even start and we may get a reason so we can try again.
