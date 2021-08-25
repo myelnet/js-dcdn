@@ -1,92 +1,42 @@
 import * as React from 'react';
-import {useState, useCallback} from 'react';
 import styles from './Home.module.css';
-import {useDT, allSelector} from './retriever';
-import {useDropzone} from 'react-dropzone';
-import {multiaddr} from 'multiaddr';
-import PeerId from 'peer-id';
-import CID from 'cids';
 
-const TEST_CID =
-  'bafykbzaceakkx46yvfgevdgoovy2gmkun4bdaroti4y4recjtokizdaqrcjlc';
+const Image = ({name}: {name: string}) => {
+  return (
+    <img
+      src={
+        '/bafyreidz7r7axugejwrw44dkf2puxvr7dz5k4mirtqvvt7pej5dupfdu7y/' + name
+      }
+      alt={name}
+    />
+  );
+};
 
 export default function Home() {
-  const [cid, setCid] = useState<string | null>(null);
-  const dt = useDT();
-
-  const startTransfer = () => {
-    if (!dt.libp2p) {
-      return;
-    }
-    const addr = multiaddr(
-      '/ip4/127.0.0.1/tcp/60834/http/p2p-webrtc-direct/p2p/12D3KooWF4Tda3GXUAegZ4Qt5yzG6qQEjWt9Z2N5NVkunzsn8Zaf'
-    );
-    const pidStr = addr.getPeerId();
-    if (!pidStr) {
-      return;
-    }
-    const pid = PeerId.createFromB58String(pidStr);
-    dt.libp2p.peerStore.addressBook.set(pid, [addr]);
-
-    const root = new CID(TEST_CID);
-
-    const addrs = dt.libp2p.peerStore.addressBook.getMultiaddrsForPeer(pid);
-
-    if (!addrs) {
-      return;
-    }
-    dt.request(pid, root, allSelector);
-  };
-
-  const onDrop = useCallback((files: File[]) => {
-    fetch('http://localhost:2001', {
-      method: 'POST',
-      body: files[0],
-    })
-      .then((res) => setCid(res.headers.get('Ipfs-Hash')))
-      .catch((err) => console.log(err));
-  }, []);
-  const {getRootProps, getInputProps, isDragActive} = useDropzone({onDrop});
-
   return (
     <div className={styles.container}>
       <main className={styles.main}>
         <h1 className={styles.title}>Retrieval tests</h1>
 
-        <p className={styles.description}>Fetch content from a Myel POP</p>
+        <p className={styles.description}>Retrieve content from a Myel POP</p>
 
         <div className={styles.grid}>
-          <div className={styles.card} onClick={startTransfer}>
-            <h2>Request &rarr;</h2>
-            <p>Start a new transfer with a peer</p>
+          <div className={styles.card}>
+            <Image name="blue-frog.jpg" />
           </div>
-
-          <div
-            className={[
-              styles.card,
-              isDragActive ? styles.cardActive : '',
-            ].join(' ')}
-            {...getRootProps()}>
-            <input {...getInputProps()} />
-            <h2>Upload &rarr;</h2>
-            {cid ? (
-              <p>Uploaded: {cid}</p>
-            ) : (
-              <p>Upload content to a node directly with HTTP</p>
-            )}
+          {/*
+          <div className={styles.card}>
+            <Image name="green-frog.jpg" />
           </div>
 
           <div className={styles.card}>
-            <h2>Examples &rarr;</h2>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
+            <Image name="orange-frog.jpg" />
           </div>
 
           <div className={styles.card}>
-            <h2>Deploy &rarr;</h2>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
+            <Image name="red-frog.jpg" />
           </div>
+	    */}
         </div>
       </main>
 

@@ -441,6 +441,7 @@
   height: 6px;
   border-radius: 2px;
   background-color: #373c4b;
+  overflow: hidden;
 }
 
 .progressIndicator {

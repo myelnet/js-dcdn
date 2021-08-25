@@ -1,4 +1,5 @@
 {
+  "node": "14",
   "packages": ["packages/myel-http-client"],
   "sandboxes": ["/examples/tx-builder"]
 }
