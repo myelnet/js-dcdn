@@ -162,7 +162,7 @@ export function createChannel(
               PAYMENT_SENT: {
                 target: 'ongoing',
                 actions: assign({
-                  fundsSpent: (ctx, evt) => ctx.fundsSpent.add(evt.amt),
+                  fundsSpent: (ctx, evt) => evt.amt,
                 }),
               },
               PAYMENT_FAILED: 'failure',
@@ -190,6 +190,8 @@ export function createChannel(
               TRANSFER_COMPLETED: 'completed',
             },
           },
+          // pendingLastBlocks is entered when the responder has sent a completion message confirming
+          // they are all done on their end though we still need to validate the last blocks
           pendingLastBlocks: {
             on: {
               BLOCK_RECEIVED: {

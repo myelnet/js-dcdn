@@ -83,6 +83,11 @@ type VoucherInfo = {
   submitted: boolean;
 };
 
+type LaneState = {
+  redeemed: BigInt;
+  nonce: number;
+};
+
 // GasEstimate is a group of values returned by lotus
 type GasEstimate = {
   GasLimit: number;
@@ -434,7 +439,6 @@ export class PayCh {
     }
     switch (lookup.Receipt.ExitCode) {
       case ExitCode.Ok:
-        console.log('exit code: Ok');
         const execReturn: PaychExecReturn = decode(
           Buffer.from(lookup.Receipt.Return, 'base64')
         );
@@ -483,17 +487,52 @@ export class PayCh {
     };
   }
 
-  _totalRedeemed(): BigInt {
-    let total = new BN(0, 10);
+  _laneStates(): Map<number, LaneState> {
+    const laneStates: Map<number, LaneState> = new Map();
     for (let i = 0; i < this._vouchers.length; i++) {
       const {voucher} = this._vouchers[i];
-      total = total.add(voucher.amount);
+      // all vouchers in this list should have a nonce
+      if (!voucher.nonce) continue;
+      const lane = voucher.lane;
+      const state = laneStates.get(lane);
+      if (!state || state.nonce < voucher.nonce) {
+        laneStates.set(lane, {
+          redeemed: voucher.amount,
+          nonce: voucher.nonce,
+        });
+      }
+    }
+    return laneStates;
+  }
+
+  _totalRedeemed(): BigInt {
+    let total = new BN(0);
+    for (const [lane, state] of this._laneStates().entries()) {
+      total = total.add(state.redeemed);
     }
     return total;
   }
 
   _totalRedeemedWithVoucher(voucher: FilecoinVoucher): BigInt {
-    return this._totalRedeemed().add(voucher.amount);
+    const laneStates = this._laneStates();
+    let total = new BN(0);
+    for (const [lane, state] of this._laneStates().entries()) {
+      if (lane === voucher.lane) {
+        if (
+          typeof voucher.nonce === 'undefined' ||
+          state.nonce >= voucher.nonce
+        ) {
+          throw new Error('nonce too low');
+        }
+        total = total.add(voucher.amount);
+      } else {
+        total = total.add(state.redeemed);
+      }
+    }
+    if (!laneStates.get(voucher.lane)) {
+      total = total.add(voucher.amount);
+    }
+    return total;
   }
 
   _nextNonceForLane(lane: number): number {

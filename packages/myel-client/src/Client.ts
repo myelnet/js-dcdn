@@ -416,6 +416,54 @@ export class Client {
     return chid;
   }
 
+  _processTransferMessage(bytes: Uint8Array) {
+    const dtres: TransferMessage = decode(bytes);
+
+    const res = dtres.Response;
+    if (!res) {
+      return;
+    }
+
+    const chid = this._chanByDtReq.get(res.XferID);
+    if (!chid) {
+      throw ErrChannelNotFound;
+    }
+
+    if (res.Acpt && res.VRes && res.VTyp === 'RetrievalDealResponse/1') {
+      const response: DealResponse = res.VRes;
+
+      switch (response.Status) {
+        case DealStatus.Accepted:
+          this.updateChannel(chid, 'DEAL_ACCEPTED');
+          const chState = this.getChannelState(chid);
+          if (chState.context.pricePerByte.gt(new BN(0))) {
+            this._loadFunds(chid);
+          }
+          break;
+
+        case DealStatus.Completed:
+          this.updateChannel(chid, 'TRANSFER_COMPLETED');
+          break;
+
+        case DealStatus.FundsNeeded:
+        case DealStatus.FundsNeededLastPayment:
+          this.updateChannel(chid, {
+            type: 'PAYMENT_REQUESTED',
+            owed: new BN(response.PaymentOwed),
+          });
+          break;
+        default:
+          // channel.callback(new Error('transfer failed'), channel.state);
+          console.log('unexpected status', response.Status);
+      }
+    }
+    // if response is not accepted, voucher revalidation failed
+    if (!res.Acpt) {
+      const err = res.VRes?.Message ?? 'Voucher invalid';
+      // TODO
+    }
+  }
+
   async _processBlock(block: GraphsyncBlock): Promise<CID> {
     const values = vd(block.prefix);
     const cidVersion = values[0];
@@ -470,7 +518,11 @@ export class Client {
     // validate we've received all the bytes we're getting charged for
     const total = context.pricePerByte.mul(new BN(context.received));
     if (context.paymentInfo && owed.lte(total.sub(context.fundsSpent))) {
-      this.updateChannel(id, {type: 'PAYMENT_AUTHORIZED', amt: owed});
+      // The next amount should be for all bytes received
+      this.updateChannel(id, {
+        type: 'PAYMENT_AUTHORIZED',
+        amt: owed.add(context.fundsSpent),
+      });
     }
   }
 
@@ -506,6 +558,7 @@ export class Client {
         amt,
       });
     } catch (e) {
+      console.log('payment failed', e);
       this.updateChannel(id, {
         type: 'PAYMENT_FAILED',
         error: e.message,
@@ -534,69 +587,20 @@ export class Client {
         chanId = chid;
 
         try {
-          const chState = this.getChannelState(chid);
           gsStatus = gsres.status;
           switch (gsStatus) {
-            case GraphsyncResponseStatus.RequestFailedUnknown: {
-              const extData = gsres.extensions[DT_EXTENSION];
-              if (!extData) {
-                continue;
-              }
-              const dtres: TransferMessage = decode(extData);
-              console.log('request failed', dtres);
-
-              // TODO: handle error
-              return;
-            }
+            case GraphsyncResponseStatus.RequestFailedUnknown:
             case GraphsyncResponseStatus.PartialResponse:
+            case GraphsyncResponseStatus.RequestPaused:
               const extData = gsres.extensions[DT_EXTENSION];
               if (!extData) {
                 continue;
               }
-              const dtres: TransferMessage = decode(extData);
-              console.log(dtres);
-
-              // check the voucher response status
-              switch (dtres.Response?.VRes?.Status) {
-                case DealStatus.Accepted:
-                  this.updateChannel(chid, 'DEAL_ACCEPTED');
-                  if (chState.context.pricePerByte.gt(new BN(0))) {
-                    this._loadFunds(chid);
-                  }
-                  break;
-                default:
-                  console.log('Data transfer unknown response', dtres);
-                  continue;
-              }
+              this._processTransferMessage(extData);
               break;
-            case GraphsyncResponseStatus.RequestPaused: {
-              const extData = gsres.extensions[DT_EXTENSION];
-              if (!extData) {
-                continue;
-              }
-              const dtres: TransferMessage = decode(extData);
-              console.log('request paused', dtres);
-
-              if (!dtres.Response) {
-                continue;
-              }
-              const response: DealResponse = dtres.Response.VRes;
-
-              switch (response.Status) {
-                case DealStatus.FundsNeeded:
-                case DealStatus.FundsNeededLastPayment:
-                  console.log('funds needed: queue payment');
-                  this.updateChannel(chid, {
-                    type: 'PAYMENT_REQUESTED',
-                    owed: new BN(response.PaymentOwed),
-                  });
-                  break;
-                default:
-                // channel.callback(new Error('transfer failed'), channel.state);
-              }
-
+            case GraphsyncResponseStatus.RequestCompletedFull:
+              // we are done receiving blocks
               break;
-            }
             case GraphsyncResponseStatus.RequestCompletedPartial:
               // this means graphsync could not find all the blocks but still got some
               // TODO: we need to register which blocks we have so we can restart a transfer with someone else
@@ -631,46 +635,6 @@ export class Client {
           // TODO
         }
       }
-    }
-  }
-
-  async _handleDataTransferMsg(from: PeerId, data: Uint8Array) {
-    const msg: TransferMessage = decode(data);
-    console.log('new data transfer msg', msg);
-
-    const res = msg.Response;
-    if (!res) {
-      console.log('message with no response');
-      return;
-    }
-    const chid = this._chanByDtReq.get(res.XferID);
-    if (!chid) {
-      throw ErrChannelNotFound;
-    }
-
-    if (res.Acpt && res.VRes && res.VTyp === 'RetrievalDealResponse/1') {
-      const response: DealResponse = res.VRes;
-
-      switch (response.Status) {
-        case DealStatus.Completed:
-          this.updateChannel(chid, 'TRANSFER_COMPLETED');
-          break;
-        case DealStatus.FundsNeeded:
-        case DealStatus.FundsNeededLastPayment:
-          console.log('funds needed: queue payment');
-          this.updateChannel(chid, {
-            type: 'PAYMENT_REQUESTED',
-            owed: new BN(response.PaymentOwed),
-          });
-          break;
-        default:
-        // channel.callback(new Error('transfer failed'), channel.state);
-      }
-    }
-    // if response is not accepted, voucher revalidation failed
-    if (!res.Acpt) {
-      const err = res.VRes?.Message ?? 'Voucher invalid';
-      // TODO
     }
   }
 
@@ -720,7 +684,7 @@ export class Client {
         for await (const data of source) {
           buffer = buffer.append(data);
         }
-        this._handleDataTransferMsg(connection.remotePeer, buffer.slice());
+        this._processTransferMessage(buffer.slice());
       });
     } catch (e) {
       console.log(e);

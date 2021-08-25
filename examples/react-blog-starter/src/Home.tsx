@@ -5,7 +5,7 @@ const Image = ({name}: {name: string}) => {
   return (
     <img
       src={
-        '/bafyreigae5sia65thtb3a73vudwi3rsxqscqnkh2mtx7jqjlq5xl72k7ba/' + name
+        '/bafyreidz7r7axugejwrw44dkf2puxvr7dz5k4mirtqvvt7pej5dupfdu7y/' + name
       }
       alt={name}
     />
@@ -24,6 +24,7 @@ export default function Home() {
           <div className={styles.card}>
             <Image name="blue-frog.jpg" />
           </div>
+          {/*
           <div className={styles.card}>
             <Image name="green-frog.jpg" />
           </div>
@@ -35,6 +36,7 @@ export default function Home() {
           <div className={styles.card}>
             <Image name="red-frog.jpg" />
           </div>
+	    */}
         </div>
       </main>
 
