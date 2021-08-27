@@ -8,6 +8,7 @@ import {encode, decode, code as cborCode} from '@ipld/dag-cbor';
 import {blake2b} from 'blakejs';
 import {encodeBigInt} from './utils';
 import {Signer} from './Signer';
+import {AMT} from './amt';
 
 const defaultMsgTimeout = 90000;
 const defaultMaxRetries = 10;
@@ -349,15 +350,25 @@ type LotusChannelState = {
   ToSend: string;
 };
 
+// Redeemed, Nonce
+export type CompactLaneState = [Uint8Array, number];
+
 class PayChState {
   from: Address;
   to: Address;
   balance: BigInt;
+  laneStates: LaneState[];
 
-  constructor(from: Address, to: Address, balance: BigInt) {
+  constructor(
+    from: Address,
+    to: Address,
+    balance: BigInt,
+    laneStates: LaneState[] = []
+  ) {
     this.from = from;
     this.to = to;
     this.balance = balance;
+    this.laneStates = laneStates;
   }
 }
 
@@ -377,6 +388,7 @@ export class PayCh {
 
   _nextLane: number = 0;
   _vouchers: VoucherInfo[] = [];
+  _state?: PayChState;
 
   constructor(from: Address, to: Address, filRPC: RPCProvider, signer: Signer) {
     this.from = from;
@@ -467,7 +479,7 @@ export class PayCh {
     // right now channels are controlled by whoever is the sender
     voucher.signature = this.signer.sign(this.from, vbytes);
 
-    const state = await this.loadActorState();
+    const state = this._state || (await this.loadActorState());
     const redeemed = this._totalRedeemedWithVoucher(voucher);
 
     if (redeemed.gt(state.balance)) {
@@ -557,19 +569,29 @@ export class PayCh {
     if (!actorState.State) {
       throw new Error('no state for this channel');
     }
-    const state = new PayChState(
+    const lanes: LaneState[] = [];
+    const base = await this.filRPC.send('ChainReadObj', [
+      actorState.State.LaneStates,
+    ]);
+
+    if (base) {
+      const amt = AMT.loadFromBase64<CompactLaneState>(base);
+      for await (const value of amt) {
+        lanes.push({
+          redeemed: new BN(value[0]),
+          nonce: value[1],
+        });
+      }
+    }
+
+    this._state = new PayChState(
       this.from,
       this.to,
-      new BN(actorState.Balance)
+      new BN(actorState.Balance),
+      lanes
     );
-    // TODO: check lane states using AMT
-    // right now we assume all the vouchers we've ever sent are in our list
-    // const obj = await this.filRPC.send('ChainReadObj', [
-    //   actorState.State.LaneStates,
-    // ]);
-    // const result = decode(Buffer.from(obj, 'base64'));
 
-    return state;
+    return this._state;
   }
 
   async availableFunds(): Promise<PayChAvailableFunds> {
@@ -580,6 +602,15 @@ export class PayCh {
       redeemedAmt: redeemed,
       spendableAmt: state.balance.sub(redeemed),
     };
+  }
+
+  // addToBalance is used for updating the channel state directly to avoid fetching it later
+  addToBalance(amt: BigInt) {
+    if (this._state) {
+      this._state.balance = this._state.balance.add(amt);
+    } else {
+      this._state = new PayChState(this.from, this.to, amt);
+    }
   }
 }
 
@@ -615,6 +646,7 @@ export class PaychMgr {
       if (lookup.Receipt.ExitCode != ExitCode.Ok) {
         throw new Error('failed to add funds');
       }
+      channel.addToBalance(amt);
       return existing;
     } else {
       const channel = new PayCh(
@@ -625,6 +657,7 @@ export class PaychMgr {
       );
       const cid = await channel.create(amt);
       const addr = await channel.waitForCreateMsg(cid, this._options);
+      channel.addToBalance(amt);
       this._chByFromTo.set(this._channelCacheKey(from, to), addr);
       this._channels.set(addr, channel);
       return addr;
