@@ -11,7 +11,7 @@ import PeerId from 'peer-id';
 import {Address} from '@glif/filecoin-address';
 import {Selector} from './utils';
 
-type PaymentInfo = {
+export type PaymentInfo = {
   chAddr: Address;
   lane: number;
 };

@@ -389,6 +389,7 @@ export class PayCh {
   _nextLane: number = 0;
   _vouchers: VoucherInfo[] = [];
   _state?: PayChState;
+  _blocks: {[key: string]: Uint8Array} = {};
 
   constructor(from: Address, to: Address, filRPC: RPCProvider, signer: Signer) {
     this.from = from;
@@ -479,7 +480,10 @@ export class PayCh {
     // right now channels are controlled by whoever is the sender
     voucher.signature = this.signer.sign(this.from, vbytes);
 
-    const state = this._state || (await this.loadActorState());
+    const state = this._state;
+    if (!state) {
+      throw new Error('no state for channel');
+    }
     const redeemed = this._totalRedeemedWithVoucher(voucher);
 
     if (redeemed.gt(state.balance)) {
@@ -501,6 +505,8 @@ export class PayCh {
 
   _laneStates(): Map<number, LaneState> {
     const laneStates: Map<number, LaneState> = new Map();
+    if (this._state) {
+    }
     for (let i = 0; i < this._vouchers.length; i++) {
       const {voucher} = this._vouchers[i];
       // all vouchers in this list should have a nonce
@@ -558,24 +564,22 @@ export class PayCh {
     return maxnonce + 1;
   }
 
-  async loadActorState(): Promise<PayChState> {
-    if (!this.addr) {
-      throw ErrNoAddressForChannel;
-    }
+  async loadStateFromActor(addr: Address): Promise<PayChState> {
     const actorState: LotusActorStateResult = await this.filRPC.send(
       'StateReadState',
-      [this.addr.toString(), null]
+      [addr.toString(), null]
     );
     if (!actorState.State) {
       throw new Error('no state for this channel');
     }
+    this.addr = addr;
     const lanes: LaneState[] = [];
-    const base = await this.filRPC.send('ChainReadObj', [
+    const root = await this.filRPC.send('ChainReadObj', [
       actorState.State.LaneStates,
     ]);
 
-    if (base) {
-      const amt = AMT.loadFromBase64<CompactLaneState>(base);
+    if (root) {
+      const amt = await AMT.load<CompactLaneState>(root, this);
       for await (const value of amt) {
         lanes.push({
           redeemed: new BN(value[0]),
@@ -595,12 +599,12 @@ export class PayCh {
   }
 
   async availableFunds(): Promise<PayChAvailableFunds> {
-    const state = await this.loadActorState();
+    const balance = this._state ? this._state.balance : new BN(0);
     const redeemed = this._totalRedeemed();
     return {
-      confirmedAmt: state.balance,
+      confirmedAmt: balance,
       redeemedAmt: redeemed,
-      spendableAmt: state.balance.sub(redeemed),
+      spendableAmt: balance.sub(redeemed),
     };
   }
 
@@ -611,6 +615,16 @@ export class PayCh {
     } else {
       this._state = new PayChState(this.from, this.to, amt);
     }
+  }
+
+  async getBlock(cid: CID): Promise<Uint8Array> {
+    const key = cid.toString();
+    // TODO: use a persistent blockstore so we don't need to refetch when reloading the page
+    if (this._blocks[key]) {
+      return this._blocks[key];
+    }
+    const data = await this.filRPC.send('ChainReadObj', [{'/': key}]);
+    return Buffer.from(data, 'base64');
   }
 }
 
@@ -627,18 +641,36 @@ export class PaychMgr {
     return from.toString() + '->' + to.toString();
   }
 
-  async getChannel(from: Address, to: Address, amt: BigInt): Promise<Address> {
+  async getChannel(
+    from: Address,
+    to: Address,
+    amt: BigInt,
+    addr?: Address
+  ): Promise<Address> {
     const existing = this._chByFromTo.get(this._channelCacheKey(from, to));
-    if (existing) {
-      const channel = this._channels.get(existing);
-      if (!channel) {
-        // we shouldn't be in that state
-        throw new Error('channel address is cached but object is not found');
+    if (existing || addr) {
+      let channel: PayCh | undefined = undefined;
+      if (existing) {
+        channel = this._channels.get(existing);
+      } else if (addr) {
+        channel = new PayCh(
+          from,
+          to,
+          this._options.filRPC,
+          this._options.signer
+        );
+        await channel.loadStateFromActor(addr);
       }
+
+      if (!channel || !channel.addr) {
+        // we shouldn't be in that state
+        throw new Error('could not load existing channel');
+      }
+
       // if there's already enough funds to spend we just return the address
       const funds = await channel.availableFunds();
       if (funds.spendableAmt.gte(amt)) {
-        return existing;
+        return channel.addr;
       }
       // the payment channel already exists but there aren't enough funds so we send some more
       const cid = await channel.addFunds(amt);
@@ -647,7 +679,7 @@ export class PaychMgr {
         throw new Error('failed to add funds');
       }
       channel.addToBalance(amt);
-      return existing;
+      return channel.addr;
     } else {
       const channel = new PayCh(
         from,

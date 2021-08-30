@@ -28,6 +28,7 @@ type ContentEntry = {
   size: number;
   pricePerByte: number;
   paymentAddress?: Address;
+  paymentChannel?: Address;
 };
 
 function toReadableStream<T>(
@@ -129,6 +130,7 @@ export class PreloadController {
             maxPaymentInterval: 1 << 20,
             maxPaymentIntervalIncrease: 1 << 20,
             paymentAddress: entry.paymentAddress,
+            paymentChannel: entry.paymentChannel,
           },
           urlToSelector(entry.url)
         );

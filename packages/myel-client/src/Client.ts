@@ -27,6 +27,7 @@ import {
   DealContext,
   DealEvent,
   ChannelState,
+  PaymentInfo,
 } from './fsm';
 import {encodeBigInt, encodeAsBigInt, Selector, urlToSelector} from './utils';
 
@@ -92,6 +93,7 @@ export type DealOffer = {
   maxPaymentIntervalIncrease: number;
   paymentAddress?: Address;
   unsealPrice?: BigInt;
+  paymentChannel?: Address;
 };
 
 enum DealStatus {
@@ -366,13 +368,21 @@ export class Client {
     selector: Selector,
     initiator: PeerId,
     responder: PeerId,
-    callback: (err: Error | null, state: ChannelState) => void
+    callback: (err: Error | null, state: ChannelState) => void,
+    paych?: Address
   ): ChannelID {
     const chid = {
       id: reqId,
       initiator,
       responder,
     };
+    let paymentInfo: PaymentInfo | undefined = undefined;
+    if (paych) {
+      paymentInfo = {
+        chAddr: paych,
+        lane: 0, // lane doesn't matter as it will be overriden based on channel state
+      };
+    }
     const ch = createChannel(
       chid,
       {
@@ -388,6 +398,7 @@ export class Client {
         paymentIntervalIncrease: offer.maxPaymentIntervalIncrease,
         currentInterval: offer.maxPaymentInterval,
         providerPaymentAddress: offer.paymentAddress,
+        paymentInfo,
       },
       {
         checkPayment: (ctx) => {
@@ -740,7 +751,8 @@ export class Client {
       selector,
       this.libp2p.peerId,
       from,
-      cb
+      cb,
+      offer.paymentChannel
     );
 
     const gsReqId = this._gsReqId++;

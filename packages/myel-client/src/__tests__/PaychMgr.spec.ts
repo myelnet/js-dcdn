@@ -179,6 +179,8 @@ describe('paych', () => {
       '584201ba8e89e9b521827c9fd130744924a72cf89f2b6c727b71f42ef7e1acdbe170c50b89b1c0bd41ab4a02c50b4cbd430d327bd72c52804415049595561147150ff201'
     );
   });
+
+  test('load channel from chain state', () => {});
 });
 
 describe('signer', () => {
