@@ -663,8 +663,6 @@ export class PaychMgr {
 
         this._chByFromTo.set(this._channelCacheKey(from, to), addr);
         this._channels.set(addr, channel);
-
-        console.log('setting channel', addr.toString());
       }
 
       if (!channel || !channel.addr) {
