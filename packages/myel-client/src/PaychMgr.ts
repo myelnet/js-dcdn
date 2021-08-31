@@ -14,8 +14,11 @@ const defaultMsgTimeout = 90000;
 const defaultMaxRetries = 10;
 
 const ErrNoAddressForChannel = new Error('no address for channel');
-const ErrChannelNotFound = new Error('channel not found');
-
+class ErrChannelNotFound extends Error {
+  constructor(channel: string) {
+    super('channel not found: ' + channel);
+  }
+}
 type ConfirmMessageOptions = {
   msgTimeout?: number;
   maxRetries?: number;
@@ -28,19 +31,19 @@ type PaychMgrOptions = ConfirmMessageOptions & {
 
 interface SignedVoucher {
   amount: BigInt;
-  lane: number;
+  lane: bigint;
   nonce?: number;
   channelAddr?: Address;
 }
 
 export class FilecoinVoucher {
   amount: BigInt;
-  lane: number;
+  lane: bigint; // uint64
   nonce?: number;
   channelAddr?: Address;
   signature?: Uint8Array;
 
-  constructor(amount: BigInt, lane: number) {
+  constructor(amount: BigInt, lane: bigint) {
     this.amount = amount;
     this.lane = lane;
   }
@@ -357,13 +360,13 @@ class PayChState {
   from: Address;
   to: Address;
   balance: BigInt;
-  laneStates: LaneState[];
+  laneStates: Map<bigint, LaneState>;
 
   constructor(
     from: Address,
     to: Address,
     balance: BigInt,
-    laneStates: LaneState[] = []
+    laneStates: Map<bigint, LaneState> = new Map()
   ) {
     this.from = from;
     this.to = to;
@@ -386,7 +389,7 @@ export class PayCh {
   filRPC: RPCProvider;
   signer: Signer;
 
-  _nextLane: number = 0;
+  _nextLane: bigint = 0n;
   _vouchers: VoucherInfo[] = [];
   _state?: PayChState;
   _blocks: {[key: string]: Uint8Array} = {};
@@ -464,7 +467,7 @@ export class PayCh {
     }
   }
 
-  allocateLane(): number {
+  allocateLane(): bigint {
     const lane = this._nextLane;
     this._nextLane++;
     return lane;
@@ -503,10 +506,10 @@ export class PayCh {
     };
   }
 
-  _laneStates(): Map<number, LaneState> {
-    const laneStates: Map<number, LaneState> = new Map();
-    if (this._state) {
-    }
+  _laneStates(): Map<bigint, LaneState> {
+    const laneStates: Map<bigint, LaneState> = this._state
+      ? this._state.laneStates
+      : new Map();
     for (let i = 0; i < this._vouchers.length; i++) {
       const {voucher} = this._vouchers[i];
       // all vouchers in this list should have a nonce
@@ -553,13 +556,11 @@ export class PayCh {
     return total;
   }
 
-  _nextNonceForLane(lane: number): number {
+  _nextNonceForLane(lane: bigint): number {
+    const lanestate = this._laneStates().get(lane);
     let maxnonce = 0;
-    for (let i = 0; i < this._vouchers.length; i++) {
-      const {voucher} = this._vouchers[i];
-      if (voucher.lane === lane && voucher.nonce && voucher.nonce > maxnonce) {
-        maxnonce = voucher.nonce;
-      }
+    if (lanestate) {
+      maxnonce = lanestate.nonce;
     }
     return maxnonce + 1;
   }
@@ -573,19 +574,18 @@ export class PayCh {
       throw new Error('no state for this channel');
     }
     this.addr = addr;
-    const lanes: LaneState[] = [];
-    const root = await this.filRPC.send('ChainReadObj', [
-      actorState.State.LaneStates,
-    ]);
+    const lanes: Map<bigint, LaneState> = new Map();
 
-    if (root) {
-      const amt = await AMT.load<CompactLaneState>(root, this);
-      for await (const value of amt) {
-        lanes.push({
-          redeemed: new BN(value[0]),
-          nonce: value[1],
-        });
-      }
+    // This AMT is just created to read the chain state. We don't bother keeping it in memory
+    const amt = await AMT.load<CompactLaneState>(
+      CID.parse(actorState.State.LaneStates['/']),
+      this
+    );
+    for await (const [idx, v] of amt.entries()) {
+      lanes.set(idx, {
+        redeemed: new BN(v[0]),
+        nonce: v[1],
+      });
     }
 
     this._state = new PayChState(
@@ -660,6 +660,11 @@ export class PaychMgr {
           this._options.signer
         );
         await channel.loadStateFromActor(addr);
+
+        this._chByFromTo.set(this._channelCacheKey(from, to), addr);
+        this._channels.set(addr, channel);
+
+        console.log('setting channel', addr.toString());
       }
 
       if (!channel || !channel.addr) {
@@ -696,10 +701,10 @@ export class PaychMgr {
     }
   }
 
-  allocateLane(ch: Address): number {
+  allocateLane(ch: Address): bigint {
     const channel = this._channels.get(ch);
     if (!channel) {
-      throw ErrChannelNotFound;
+      throw new ErrChannelNotFound(ch.toString());
     }
     return channel.allocateLane();
   }
@@ -707,7 +712,7 @@ export class PaychMgr {
   async channelAvailableFunds(ch: Address): Promise<PayChAvailableFunds> {
     const channel = this._channels.get(ch);
     if (!channel) {
-      throw ErrChannelNotFound;
+      throw new ErrChannelNotFound(ch.toString());
     }
     return channel.availableFunds();
   }
@@ -715,11 +720,11 @@ export class PaychMgr {
   async createVoucher(
     ch: Address,
     amt: BigInt,
-    lane: number
+    lane: bigint
   ): Promise<VoucherCreateResult> {
     const channel = this._channels.get(ch);
     if (!channel) {
-      throw ErrChannelNotFound;
+      throw new ErrChannelNotFound(ch.toString());
     }
     const voucher = new FilecoinVoucher(amt, lane);
     return channel.createVoucher(voucher);

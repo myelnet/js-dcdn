@@ -9,7 +9,11 @@ export class MockRPCProvider {
   results: Map<string, any> = new Map();
   callbacks: Map<string, (result: any) => void> = new Map();
   send(method: string, params?: Array<any>): Promise<any> {
-    const result = this.results.get(method);
+    let key = method;
+    if (/ChainReadObj/.test(method) && params) {
+      key = key + '-' + params[0]['/'];
+    }
+    const result = this.results.get(key);
     return Promise.resolve(result);
   }
   async subscribe(

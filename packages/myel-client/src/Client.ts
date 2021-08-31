@@ -376,13 +376,6 @@ export class Client {
       initiator,
       responder,
     };
-    let paymentInfo: PaymentInfo | undefined = undefined;
-    if (paych) {
-      paymentInfo = {
-        chAddr: paych,
-        lane: 0, // lane doesn't matter as it will be overriden based on channel state
-      };
-    }
     const ch = createChannel(
       chid,
       {
@@ -398,7 +391,7 @@ export class Client {
         paymentIntervalIncrease: offer.maxPaymentIntervalIncrease,
         currentInterval: offer.maxPaymentInterval,
         providerPaymentAddress: offer.paymentAddress,
-        paymentInfo,
+        initialChannelAddr: paych,
       },
       {
         checkPayment: (ctx) => {
@@ -504,7 +497,8 @@ export class Client {
       const chAddr = await this.paychMgr.getChannel(
         this.defaultAddress,
         context.providerPaymentAddress,
-        funds
+        funds,
+        context.initialChannelAddr
       );
       console.log('loaded channel', chAddr.toString());
       const lane = this.paychMgr.allocateLane(chAddr);

@@ -13,7 +13,7 @@ import {Selector} from './utils';
 
 export type PaymentInfo = {
   chAddr: Address;
-  lane: number;
+  lane: bigint;
 };
 
 export type ChannelID = {
@@ -37,6 +37,7 @@ export interface DealContext {
   // last fields won't be available if pricePerByte.isZero()
   paymentRequested?: BN;
   providerPaymentAddress?: Address;
+  initialChannelAddr?: Address; // will be superceded by the paymentInfo field
   paymentInfo?: PaymentInfo;
 }
 

@@ -68,7 +68,7 @@ describe('paych', () => {
 
   test('vouchers', async () => {
     const rpc = new MockRPCProvider();
-    rpc.results.set('MpoolGetNonce', 1);
+    rpc.results.set('MpoolGetNonce', 1n);
 
     // this call returns all the message fields too but we don't care about them
     rpc.results.set('GasEstimateMessageGas', {
@@ -114,15 +114,15 @@ describe('paych', () => {
     });
 
     // create a voucher for the total funds
-    const vouch1 = await mgr.createVoucher(ch, new BN(10), 1);
+    const vouch1 = await mgr.createVoucher(ch, new BN(10), 1n);
     expect(vouch1.shortfall.isZero()).toBe(true);
 
     // create a new voucher exceeding the balance
-    const vouch1a = await mgr.createVoucher(ch, new BN(12), 1);
+    const vouch1a = await mgr.createVoucher(ch, new BN(12), 1n);
     expect(vouch1a.shortfall.eq(new BN(2))).toBe(true);
 
     // create a new voucher exceeding the balance on a different lane
-    const vouch2 = await mgr.createVoucher(ch, new BN(5), 2);
+    const vouch2 = await mgr.createVoucher(ch, new BN(5), 2n);
     expect(vouch2.shortfall.eq(new BN(5))).toBe(true);
 
     // now add more funds
@@ -148,7 +148,7 @@ describe('paych', () => {
     });
 
     // now we can try the voucher again
-    const vouch3 = await mgr.createVoucher(ch, new BN(5), 2);
+    const vouch3 = await mgr.createVoucher(ch, new BN(5), 2n);
     expect(vouch3.shortfall.isZero()).toBe(true);
 
     const funds = await mgr.channelAvailableFunds(ch);
@@ -158,7 +158,7 @@ describe('paych', () => {
   });
 
   test('encode voucher', () => {
-    const voucher = new FilecoinVoucher(new BN(1214), 0);
+    const voucher = new FilecoinVoucher(new BN(1214), 0n);
     voucher.channelAddr = decodeAddress(
       'f2s3tpuynlyzpdgiexvucmebrs2of4jrfepgtg76y'
     );
