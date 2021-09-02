@@ -1,0 +1,21 @@
+name: Go
+
+on:
+  push:
+    branches: [ dev ]
+  pull_request:
+    branches: [ dev ]
+
+jobs:
+
+  build:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install modules
+      run: yarn
+
+    - name: Run tests
+      run: yarn test:myel-client
