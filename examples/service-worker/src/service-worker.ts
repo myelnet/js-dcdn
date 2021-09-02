@@ -34,11 +34,12 @@ const setup = (self: ServiceWorkerGlobalScope) => {
 
   controller.preload([
     {
-      url: '/bafyreidz7r7axugejwrw44dkf2puxvr7dz5k4mirtqvvt7pej5dupfdu7y/*',
+      root: 'bafyreigae5sia65thtb3a73vudwi3rsxqscqnkh2mtx7jqjlq5xl72k7ba',
+      selector: '/',
       peerAddr:
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWCRx3EucZ4GiPYPGf9fY8X9SmHhiL8eoHwhM7NiGtU6Sg',
-      size: 1800000,
-      pricePerByte: 1,
+        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWDkwA1YpH3GV3zrVfZC7sauR6qVkZG4uDssfZ8GwLbspr',
+      size: 5000000,
+      pricePerByte: 0,
       paymentAddress: decodeAddress(
         'f13t4qv2lvlwowq67d2txl7auiddhlppca3nw5yxa'
       ),

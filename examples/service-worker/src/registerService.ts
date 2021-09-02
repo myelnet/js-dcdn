@@ -1,3 +1,5 @@
+import {useStore} from './store';
+
 export function register() {
   const swUrl = `${process.env.PUBLIC_URL}/service-worker.js`;
 
@@ -71,6 +73,9 @@ function registerValidSW(swUrl: string) {
 
               // Execute callback
             }
+          }
+          if (installingWorker.state === 'activated') {
+            useStore.setState({cached: true});
           }
         };
       };

@@ -65,7 +65,8 @@ describe('fsm', () => {
     expect(service.state.value).toBe('validatePayment');
     expect(service.state.context.paymentRequested?.eq(new BN(1234))).toBe(true);
 
-    service.send({type: 'ALL_BLOCKS_RECEIVED', received: 1000});
+    service.send({type: 'BLOCK_RECEIVED', received: 1000});
+    service.send({type: 'ALL_BLOCKS_RECEIVED'});
     expect(service.state.value).toBe('validatePayment');
     expect(service.state.context.received).toBe(1234);
 
@@ -73,7 +74,7 @@ describe('fsm', () => {
       type: 'PAYCH_READY',
       paymentInfo: {
         chAddr: decodeAddress('f2s3tpuynlyzpdgiexvucmebrs2of4jrfepgtg76y'),
-        lane: 0,
+        lane: 0n,
       },
     });
     expect(service.state.value).toBe('ongoing');
@@ -136,7 +137,7 @@ describe('fsm', () => {
       type: 'PAYCH_READY',
       paymentInfo: {
         chAddr: decodeAddress('f2s3tpuynlyzpdgiexvucmebrs2of4jrfepgtg76y'),
-        lane: 0,
+        lane: 0n,
       },
     });
     expect(service.state.value).toBe('ongoing');
@@ -146,9 +147,11 @@ describe('fsm', () => {
     expect(service.state.value).toBe('ongoing');
     expect(service.state.context.paymentRequested?.eq(new BN(1234))).toBe(true);
 
-    service.send({type: 'ALL_BLOCKS_RECEIVED', received: 1000});
+    service.send({type: 'BLOCK_RECEIVED', received: 1000});
     expect(service.state.value).toBe('ongoing');
     expect(service.state.context.received).toBe(1234);
+
+    service.send({type: 'ALL_BLOCKS_RECEIVED'});
 
     service.send('TRANSFER_COMPLETED');
     expect(service.state.value).toBe('completed');

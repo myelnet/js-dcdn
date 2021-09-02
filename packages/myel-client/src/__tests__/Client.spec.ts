@@ -1,6 +1,6 @@
 import {MemoryBlockstore} from 'interface-blockstore';
 import {Client} from '../Client';
-import {allSelector} from '../utils';
+import {allSelector} from '../selectors';
 import {MockRPCProvider, MockLibp2p} from './utils';
 import PeerId from 'peer-id';
 import {CID, bytes} from 'multiformats';
@@ -13,6 +13,15 @@ import {
 import {encode} from '@ipld/dag-cbor';
 import {ChannelState, DealState} from '../fsm';
 import * as fix from './fixtures';
+import crypto from 'crypto';
+
+global.crypto = {
+  subtle: {
+    // @ts-ignore
+    digest: (name: string, data: Uint8Array) =>
+      crypto.createHash('sha256').update(data).digest(),
+  },
+};
 
 describe('MyelClient', () => {
   test('operates a free transfer', async () => {
@@ -56,7 +65,7 @@ describe('MyelClient', () => {
 
     await client._handleGraphsyncMsg(ppid, fix.gsMsg1);
 
-    expect(client.getChannelState(chid).matches('ongoing')).toBe(true);
+    expect(client.getChannelState(chid).matches('accepted')).toBe(true);
     expect(client.getChannelState(chid).context.received).toBe(87);
 
     await client._handleGraphsyncMsg(ppid, fix.gsMsg2);
@@ -114,6 +123,50 @@ describe('MyelClient', () => {
 
     expect(state[0].matches('completed')).toBe(true);
     expect(state[0].context.received).toBe(1214);
+    expect(state[0].context.allReceived).toBe(true);
+  });
+
+  test('handles a one block transfer', async () => {
+    const rpc = new MockRPCProvider();
+    const blocks = new MemoryBlockstore();
+    const libp2p = new MockLibp2p(
+      PeerId.createFromB58String(
+        '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
+      )
+    );
+    const client = new Client({
+      rpc,
+      blocks,
+      libp2p,
+    });
+    client._dtReqId = 1630453456080;
+
+    const offer = {
+      id: '1',
+      peerAddr:
+        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
+      cid: CID.parse(
+        'bafyreigae5sia65thtb3a73vudwi3rsxqscqnkh2mtx7jqjlq5xl72k7ba'
+      ),
+      size: 326,
+      paymentAddress: client.signer.genPrivate(),
+      minPricePerByte: new BN(0),
+      maxPaymentInterval: 0,
+      maxPaymentIntervalIncrease: 0,
+    };
+
+    const ppid = PeerId.createFromB58String(
+      '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+    );
+
+    const state = await Promise.all([
+      client.loadAsync(offer, allSelector),
+      client._handleGraphsyncMsg(ppid, fix.gsMsgSingleBlock),
+      client._processTransferMessage(fix.dtMsgSingleBlockComplete),
+    ]);
+
+    expect(state[0].matches('completed')).toBe(true);
+    expect(state[0].context.received).toBe(326);
     expect(state[0].context.allReceived).toBe(true);
   });
 
@@ -203,10 +256,12 @@ describe('MyelClient', () => {
               case 'waitForAcceptance':
                 client._handleGraphsyncMsg(ppid, fix.gsMsg1);
                 break;
-              case 'ongoing':
+              case 'accepted':
                 if (state.context.received === 87) {
                   client._handleGraphsyncMsg(ppid, fix.gsMsg2);
-                } else if (state.context.fundsSpent.gt(new BN(0))) {
+                }
+              case 'ongoing':
+                if (state.context.fundsSpent.gt(new BN(0))) {
                   client._processTransferMessage(fix.dtMsgCompleted);
                 } else if (state.context.allReceived) {
                   client._processTransferMessage(fix.dtMsgPaymentReq);
@@ -374,10 +429,12 @@ describe('MyelClient', () => {
             case 'waitForAcceptance':
               client._handleGraphsyncMsg(ppid, fix.gsMsg1);
               break;
-            case 'ongoing':
+            case 'accepted':
               if (state.context.received === 87) {
                 client._handleGraphsyncMsg(ppid, fix.gsMsg2);
-              } else if (state.context.fundsSpent.gt(new BN(0))) {
+              }
+            case 'ongoing':
+              if (state.context.fundsSpent.gt(new BN(0))) {
                 client._processTransferMessage(fix.dtMsgCompleted);
               } else if (state.context.allReceived) {
                 client._processTransferMessage(fix.dtMsgPaymentReq);

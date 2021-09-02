@@ -16,6 +16,7 @@ import {from as hasherFrom} from 'multiformats/hashes/hasher';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
 import {Address} from '@glif/filecoin-address';
+import {MemoryBlockstore} from 'interface-blockstore';
 
 import {RPCProvider} from './FilRPC';
 import {PaychMgr} from './PaychMgr';
@@ -29,7 +30,8 @@ import {
   ChannelState,
   PaymentInfo,
 } from './fsm';
-import {encodeBigInt, encodeAsBigInt, Selector, urlToSelector} from './utils';
+import {encodeBigInt, encodeAsBigInt} from './utils';
+import {Selector} from './selectors';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -191,6 +193,15 @@ enum GraphsyncResponseStatus {
   RequestCancelled = 35,
 }
 
+const graphsyncStatuses = {
+  [GraphsyncResponseStatus.RequestAcknowledged]: 'RequestAcknowledged',
+  [GraphsyncResponseStatus.PartialResponse]: 'PartialResponse',
+  [GraphsyncResponseStatus.RequestPaused]: 'RequestPaused',
+  [GraphsyncResponseStatus.RequestCompletedFull]: 'RequestCompletedFull',
+  [GraphsyncResponseStatus.RequestCompletedPartial]: 'RequestCompletedPartial',
+  [GraphsyncResponseStatus.RequestRejected]: 'RequestRejected',
+};
+
 type GraphsyncResponse = {
   id: number;
   status: GraphsyncResponseStatus;
@@ -207,6 +218,10 @@ type GraphsyncMessage = {
 type GraphsyncBlock = {
   prefix: Uint8Array;
   data: Uint8Array;
+};
+
+type GraphsyncMetadata = {
+  link: CID;
 };
 
 const gsMsg = protons(`
@@ -294,6 +309,8 @@ export class Client {
     [blake2b256.code]: blake2b256,
     [sha256.code]: sha256,
   };
+  // staged blocks are stored in memory while we validate them before persisted in the blockstore
+  private readonly _stagedBlocks: Blockstore = new MemoryBlockstore();
 
   constructor(options: ClientOptions) {
     this.libp2p = options.libp2p;
@@ -420,8 +437,10 @@ export class Client {
     return chid;
   }
 
-  _processTransferMessage(bytes: Uint8Array) {
-    const dtres: TransferMessage = decode(bytes);
+  _processTransferMessage(data: Uint8Array) {
+    const dtres: TransferMessage = decode(data);
+
+    console.log('new data transfer message', dtres);
 
     const res = dtres.Response;
     if (!res) {
@@ -468,21 +487,43 @@ export class Client {
     }
   }
 
-  async _processBlock(block: GraphsyncBlock): Promise<CID> {
-    const values = vd(block.prefix);
-    const cidVersion = values[0];
-    const multicodec = values[1];
-    const multihash = values[2];
-    const hasher = this._hashers[multihash];
-    if (!hasher) {
-      throw new Error('Unsuported hasher');
-    }
-    const hash = await hasher.digest(block.data);
-    const cid = CID.create(cidVersion, multicodec, hash);
-    await this.blocks.put(cid, block.data);
+  async _stageBlock(block: GraphsyncBlock) {
+    try {
+      const values = vd(block.prefix);
+      const cidVersion = values[0];
+      const multicodec = values[1];
+      const multihash = values[2];
+      const hasher = this._hashers[multihash];
+      if (!hasher) {
+        throw new Error('Unsuported hasher');
+      }
+      const hash = await hasher.digest(block.data);
+      const cid = CID.create(cidVersion, multicodec, hash);
 
-    // TODO: now we need to walk the DAG to verify the data is correct
-    return cid;
+      await this._stagedBlocks.put(cid, block.data);
+
+      // TODO: now we need to walk the DAG to verify the data is correct
+    } catch (e) {
+      // TODO
+      console.log(e);
+    }
+  }
+
+  async _processBlock(id: ChannelID, cid: CID) {
+    try {
+      const block = await this._stagedBlocks.get(cid);
+
+      await this.blocks.put(cid, block);
+
+      console.log('processed block', cid.toString());
+      this.updateChannel(id, {
+        type: 'BLOCK_RECEIVED',
+        received: block.byteLength,
+      });
+    } catch (e) {
+      // TODO
+      console.log(e);
+    }
   }
 
   async _loadFunds(id: ChannelID) {
@@ -572,39 +613,60 @@ export class Client {
   }
 
   async _handleGraphsyncMsg(from: PeerId, data: Uint8Array) {
-    console.log('new graphsync msg');
     const msg: GraphsyncMessage = await gsMsg.Message.decode(data);
+    console.log('new graphsync msg', msg);
+    // extract blocks from graphsync messages
+    if (msg.data) {
+      for (let i = 0; i < msg.data.length; i++) {
+        await this._stageBlock(msg.data[i]);
+      }
+    }
 
-    let chanId: ChannelID | null = null;
-    let gsStatus: GraphsyncResponseStatus | null = null;
     // extract data transfer extensions from graphsync response messages
     if (msg.responses) {
-      console.log('number of response payloads', msg.responses.length);
       for (let i = 0; i < msg.responses.length; i++) {
         const gsres = msg.responses[i];
-        console.log('responses', gsres);
         const chid = this._chanByGsReq.get(gsres.id);
         // if we have no channel for this response this is a bug
         if (!chid) {
           console.log('received message without a dt channel');
           continue;
         }
-        chanId = chid;
 
         try {
-          gsStatus = gsres.status;
+          const gsStatus = gsres.status;
+          const extData = gsres.extensions[DT_EXTENSION];
+          console.log(
+            'got response for graphsync status',
+            // @ts-ignore
+            graphsyncStatuses[gsStatus],
+            chid.id
+          );
+          const mdata = gsres.extensions[GS_EXTENSION_METADATA];
+          if (mdata) {
+            const metadata: GraphsyncMetadata[] = decode(mdata);
+            console.log(
+              'metadata for ',
+              chid.id,
+              metadata,
+              metadata[i].link.toString()
+            );
+
+            for (let i = 0; i < metadata.length; i++) {
+              const link = metadata[i].link;
+              await this._processBlock(chid, link);
+            }
+          }
           switch (gsStatus) {
+            case GraphsyncResponseStatus.RequestCompletedFull:
+              this.updateChannel(chid, 'ALL_BLOCKS_RECEIVED');
             case GraphsyncResponseStatus.RequestFailedUnknown:
             case GraphsyncResponseStatus.PartialResponse:
             case GraphsyncResponseStatus.RequestPaused:
-              const extData = gsres.extensions[DT_EXTENSION];
               if (!extData) {
                 continue;
               }
               this._processTransferMessage(extData);
-              break;
-            case GraphsyncResponseStatus.RequestCompletedFull:
-              // we are done receiving blocks
               break;
             case GraphsyncResponseStatus.RequestCompletedPartial:
               // this means graphsync could not find all the blocks but still got some
@@ -613,31 +675,6 @@ export class Client {
           }
         } catch (e) {
           // TODO: error handling
-        }
-      }
-    }
-    // extract blocks from graphsync messages
-    if (msg.data) {
-      console.log('number of data payloads', msg.data.length);
-      for (let i = 0; i < msg.data.length; i++) {
-        if (!chanId) {
-          console.log('got block without a channel');
-          continue;
-        }
-        const block = msg.data[i];
-        try {
-          const cid = await this._processBlock(block);
-          console.log('processed block', cid.toString());
-
-          this.updateChannel(chanId, {
-            type:
-              gsStatus === GraphsyncResponseStatus.RequestCompletedFull
-                ? 'ALL_BLOCKS_RECEIVED'
-                : 'BLOCK_RECEIVED',
-            received: block.data.byteLength,
-          });
-        } catch (e) {
-          // TODO
         }
       }
     }
@@ -708,6 +745,7 @@ export class Client {
     if (!ch) {
       throw ErrChannelNotFound;
     }
+    console.log('sending event', event, 'to channel', id.id);
     ch.send(event);
   }
 

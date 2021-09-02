@@ -106,7 +106,8 @@
     "webpack": "4.44.2",
     "webpack-dev-server": "3.11.1",
     "webpack-manifest-plugin": "2.2.0",
-    "workbox-webpack-plugin": "5.1.4"
+    "workbox-webpack-plugin": "5.1.4",
+    "zustand": "^3.5.10"
   },
   "devDependencies": {
     "@types/mime-types": "^2.1.0",
