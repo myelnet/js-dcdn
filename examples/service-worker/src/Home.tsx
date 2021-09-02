@@ -1,11 +1,12 @@
 import * as React from 'react';
 import styles from './Home.module.css';
+import {useStore} from './store';
 
 const Image = ({name}: {name: string}) => {
   return (
     <img
       src={
-        '/bafyreidz7r7axugejwrw44dkf2puxvr7dz5k4mirtqvvt7pej5dupfdu7y/' + name
+        '/bafyreigae5sia65thtb3a73vudwi3rsxqscqnkh2mtx7jqjlq5xl72k7ba/' + name
       }
       alt={name}
     />
@@ -13,6 +14,7 @@ const Image = ({name}: {name: string}) => {
 };
 
 export default function Home() {
+  const cached = useStore((state) => state.cached);
   return (
     <div className={styles.container}>
       <main className={styles.main}>
@@ -20,24 +22,22 @@ export default function Home() {
 
         <p className={styles.description}>Retrieve content from a Myel POP</p>
 
-        <div className={styles.grid}>
-          <div className={styles.card}>
-            <Image name="blue-frog.jpg" />
+        {cached && (
+          <div className={styles.grid}>
+            <div className={styles.card}>
+              <Image name="blue-frog.jpg" />
+            </div>
+            <div className={styles.card}>
+              <Image name="green-frog.jpg" />
+            </div>
+            <div className={styles.card}>
+              <Image name="orange-frog.jpg" />
+            </div>
+            <div className={styles.card}>
+              <Image name="red-frog.jpg" />
+            </div>
           </div>
-          {/*
-          <div className={styles.card}>
-            <Image name="green-frog.jpg" />
-          </div>
-
-          <div className={styles.card}>
-            <Image name="orange-frog.jpg" />
-          </div>
-
-          <div className={styles.card}>
-            <Image name="red-frog.jpg" />
-          </div>
-	    */}
-        </div>
+        )}
       </main>
 
       <footer className={styles.footer}>

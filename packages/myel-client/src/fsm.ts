@@ -9,7 +9,7 @@ import {
 import BN from 'bn.js';
 import PeerId from 'peer-id';
 import {Address} from '@glif/filecoin-address';
-import {Selector} from './utils';
+import {Selector} from './selectors';
 
 export type PaymentInfo = {
   chAddr: Address;
@@ -49,7 +49,7 @@ export type DealEvent =
   | {type: 'PAYCH_FAILED'; error: string}
   | {type: 'PAYMENT_REQUESTED'; owed: BN}
   | {type: 'BLOCK_RECEIVED'; received: number}
-  | {type: 'ALL_BLOCKS_RECEIVED'; received: number}
+  | {type: 'ALL_BLOCKS_RECEIVED'}
   | {type: 'PAYMENT_AUTHORIZED'; amt: BN}
   | {type: 'PAYMENT_SENT'; amt: BN}
   | {type: 'PAYMENT_FAILED'; error: string}
@@ -77,8 +77,7 @@ export type ChannelState = StateMachine.State<
 
 const receiveBlock = assign<
   DealContext,
-  | {type: 'BLOCK_RECEIVED'; received: number}
-  | {type: 'ALL_BLOCKS_RECEIVED'; received: number}
+  {type: 'BLOCK_RECEIVED'; received: number}
 >({
   received: (ctx, evt) => ctx.received + evt.received,
 });
@@ -108,6 +107,16 @@ export function createChannel(
             on: {
               DEAL_ACCEPTED: 'accepted',
               DEAL_REjECTED: 'rejected',
+              BLOCK_RECEIVED: {
+                target: 'waitForAcceptance',
+                actions: receiveBlock,
+              },
+              ALL_BLOCKS_RECEIVED: {
+                target: 'waitForAcceptance',
+                actions: receiveAllBlocks,
+              },
+              // may happen in the case of a free transfer and a single block
+              TRANSFER_COMPLETED: 'pendingLastBlocks',
             },
           },
           // Once accepted if the transfer requires payment we load a payment channel with the funds
@@ -128,7 +137,7 @@ export function createChannel(
               },
               ALL_BLOCKS_RECEIVED: {
                 target: 'ongoing',
-                actions: [receiveBlock, receiveAllBlocks],
+                actions: receiveAllBlocks,
               },
               TRANSFER_COMPLETED: {
                 target: 'pendingLastBlocks',
@@ -152,7 +161,7 @@ export function createChannel(
               },
               ALL_BLOCKS_RECEIVED: {
                 target: 'validatePayment',
-                actions: [receiveBlock, receiveAllBlocks],
+                actions: receiveAllBlocks,
               },
             },
           },
@@ -186,7 +195,7 @@ export function createChannel(
               },
               ALL_BLOCKS_RECEIVED: {
                 target: 'ongoing',
-                actions: [receiveBlock, receiveAllBlocks],
+                actions: receiveAllBlocks,
               },
               TRANSFER_COMPLETED: 'completed',
             },
@@ -201,7 +210,7 @@ export function createChannel(
               },
               ALL_BLOCKS_RECEIVED: {
                 target: 'completed',
-                actions: [receiveBlock, receiveAllBlocks],
+                actions: receiveAllBlocks,
               },
             },
           },

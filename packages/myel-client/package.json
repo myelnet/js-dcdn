@@ -23,6 +23,7 @@
     "@types/bn.js": "^5.1.0",
     "@types/elliptic": "^6.4.13",
     "@types/mime-types": "^2.1.1",
+    "crypto": "^1.0.1",
     "it-pair": "^1.0.0",
     "rollup": "^2.35.1",
     "tslib": "^2.0.3",

@@ -12,7 +12,7 @@ import {Address} from '@glif/filecoin-address';
 import {Blockstore} from 'interface-blockstore';
 import {BlockstoreAdapter} from './BlockstoreAdapter';
 import {Client, DealOffer} from './Client';
-import {urlToSelector} from './utils';
+import {getSelector} from './selectors';
 import {FilRPC} from './FilRPC';
 
 declare let self: ServiceWorkerGlobalScope;
@@ -23,7 +23,8 @@ type ControllerOptions = {
 };
 
 type ContentEntry = {
-  url: string;
+  root: string;
+  selector: string;
   peerAddr: string;
   size: number;
   pricePerByte: number;
@@ -92,8 +93,7 @@ export class PreloadController {
 
   addToContentList(entries: ContentEntry[]): void {
     for (const entry of entries) {
-      const segs = toPathComponents(entry.url);
-      this._cidToContentEntry.set(segs[0], entry);
+      this._cidToContentEntry.set(entry.root, entry);
     }
   }
 
@@ -121,20 +121,11 @@ export class PreloadController {
       for (const [cid, entry] of this._cidToContentEntry) {
         const root = CID.parse(cid);
         await this._client.loadAsync(
-          {
-            id: '1',
-            peerAddr: entry.peerAddr,
-            cid: root,
-            size: entry.size,
-            minPricePerByte: new BN(entry.pricePerByte),
-            maxPaymentInterval: 1 << 20,
-            maxPaymentIntervalIncrease: 1 << 20,
-            paymentAddress: entry.paymentAddress,
-            paymentChannel: entry.paymentChannel,
-          },
-          urlToSelector(entry.url)
+          this.offerFromEntry(root, entry),
+          getSelector(entry.selector)
         );
       }
+      return self.skipWaiting();
     })();
     event.waitUntil(promise);
     return promise;
@@ -143,6 +134,7 @@ export class PreloadController {
   activate(event: ExtendableEvent): Promise<void> {
     const promise = (async () => {
       // TODO: cleanup any content we don't need anymore
+      return self.clients.claim();
     })();
     event.waitUntil(promise);
     return promise;
@@ -183,6 +175,23 @@ export class PreloadController {
     // for now we assume our node is a unixfs directory
     for (const link of node.Links) {
       if (key === link.Name) {
+        const has = await this._client.blocks.has(link.Hash);
+        if (!has) {
+          const entry = this._cidToContentEntry.get(root.toString());
+          if (!entry) {
+            throw new Error(
+              'no content entry for: ' + root.toString() + '/' + key
+            );
+          }
+          if (link.Tsize) {
+            console.log(link.Name, link.Hash.toString());
+            entry.size = link.Tsize;
+          }
+          await this._client.loadAsync(
+            this.offerFromEntry(link.Hash, entry),
+            getSelector('*')
+          );
+        }
         const content = this.cat(link.Hash);
         const body = toReadableStream(content);
         const headers: {[key: string]: any} = {};
@@ -217,5 +226,19 @@ export class PreloadController {
     }
 
     yield* file.content(options);
+  }
+
+  offerFromEntry(root: CID, entry: ContentEntry): DealOffer {
+    return {
+      id: '1',
+      peerAddr: entry.peerAddr,
+      cid: root,
+      size: entry.size,
+      minPricePerByte: new BN(entry.pricePerByte),
+      maxPaymentInterval: 1 << 20,
+      maxPaymentIntervalIncrease: 1 << 20,
+      paymentAddress: entry.paymentAddress,
+      paymentChannel: entry.paymentChannel,
+    };
   }
 }
