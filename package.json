@@ -5,7 +5,8 @@
   ],
   "scripts": {
     "build": "concurrently 'yarn:build:*'",
-    "build:myel-http-client": "cd packages/myel-http-client && yarn build"
+    "build:myel-http-client": "cd packages/myel-http-client && yarn build",
+    "test:myel-client": "cd packages/myel-client && yarn test"
   },
   "devDependencies": {
     "@babel/core": "7.12.3",
