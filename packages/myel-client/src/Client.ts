@@ -31,7 +31,7 @@ import {
   PaymentInfo,
 } from './fsm';
 import {encodeBigInt, encodeAsBigInt} from './utils';
-import {Selector} from './selectors';
+import {SelectorNode} from './selectors';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -347,7 +347,7 @@ export class Client {
 
   _newRequest(
     offer: DealOffer,
-    selector: Selector,
+    selector: SelectorNode,
     to: PeerId
   ): TransferRequest {
     const rid = this._dtReqId++;
@@ -382,7 +382,7 @@ export class Client {
   _createChannel(
     reqId: number,
     offer: DealOffer,
-    selector: Selector,
+    selector: SelectorNode,
     initiator: PeerId,
     responder: PeerId,
     callback: (err: Error | null, state: ChannelState) => void,
@@ -763,7 +763,7 @@ export class Client {
    */
   load(
     offer: DealOffer,
-    selector: Selector,
+    selector: SelectorNode,
     cb: (err: Error | null, state: ChannelState) => void = () => {}
   ): ChannelID {
     const root = offer.cid;
@@ -814,7 +814,7 @@ export class Client {
   /**
    * loadAsync returns a promise that will get resolved once the transfer is completed of fails
    */
-  loadAsync(offer: DealOffer, selector: Selector): Promise<ChannelState> {
+  loadAsync(offer: DealOffer, selector: SelectorNode): Promise<ChannelState> {
     return new Promise((resolve, reject) => {
       function callback(err: Error | null, state: ChannelState) {
         if (err) {

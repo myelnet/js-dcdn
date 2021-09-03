@@ -9,7 +9,7 @@ import {
 import BN from 'bn.js';
 import PeerId from 'peer-id';
 import {Address} from '@glif/filecoin-address';
-import {Selector} from './selectors';
+import {SelectorNode} from './selectors';
 
 export type PaymentInfo = {
   chAddr: Address;
@@ -24,7 +24,7 @@ export type ChannelID = {
 
 export interface DealContext {
   root: CID;
-  selector: Selector;
+  selector: SelectorNode;
   received: number;
   totalSize: number;
   allReceived: boolean;
