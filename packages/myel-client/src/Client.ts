@@ -16,7 +16,7 @@ import {from as hasherFrom} from 'multiformats/hashes/hasher';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
 import {Address} from '@glif/filecoin-address';
-import {MemoryBlockstore} from 'interface-blockstore';
+import {MemoryBlockstore, Blockstore} from 'interface-blockstore';
 
 import {RPCProvider} from './FilRPC';
 import {PaychMgr} from './PaychMgr';
@@ -31,7 +31,14 @@ import {
   PaymentInfo,
 } from './fsm';
 import {encodeBigInt, encodeAsBigInt} from './utils';
-import {SelectorNode} from './selectors';
+import {
+  SelectorNode,
+  TraversalProgress,
+  decoderFor,
+  traversal,
+  AsyncLoader,
+  parseContext,
+} from './selectors';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -70,12 +77,6 @@ interface P2P {
     protocols: string[] | string,
     options?: any
   ) => Promise<{stream: MuxedStream; protocol: string}>;
-}
-
-interface Blockstore {
-  put: (key: CID, val: Uint8Array) => Promise<void>;
-  get: (key: CID) => Promise<Uint8Array>;
-  has: (key: CID) => Promise<boolean>;
 }
 
 type ClientOptions = {
@@ -311,6 +312,10 @@ export class Client {
   };
   // staged blocks are stored in memory while we validate them before persisted in the blockstore
   private readonly _stagedBlocks: Blockstore = new MemoryBlockstore();
+  // loaders is a map of loaders per channel
+  private readonly _loaders: Map<ChannelID, AsyncLoader> = new Map();
+  // promise chain for each block to ensure we wait for all of them to be processed before completion messages
+  private readonly _blockPromise: Map<ChannelID, Promise<any>> = new Map();
 
   constructor(options: ClientOptions) {
     this.libp2p = options.libp2p;
@@ -511,15 +516,51 @@ export class Client {
 
   async _processBlock(id: ChannelID, cid: CID) {
     try {
-      const block = await this._stagedBlocks.get(cid);
-
-      await this.blocks.put(cid, block);
-
-      console.log('processed block', cid.toString());
-      this.updateChannel(id, {
-        type: 'BLOCK_RECEIVED',
-        received: block.byteLength,
-      });
+      const {context} = this.getChannelState(id);
+      if (cid.equals(context.root)) {
+        const block = await this._stagedBlocks.get(cid);
+        await this.blocks.put(cid, block);
+        console.log('processed block', cid.toString());
+        // cid is equal to the root so this block is trustworthy
+        this.updateChannel(id, {
+          type: 'BLOCK_RECEIVED',
+          received: block.byteLength,
+        });
+        // decode the first node to get the traversal going
+        const decode = decoderFor(cid);
+        const node = decode(block);
+        console.log(node);
+        const linkLoader = new AsyncLoader(this._stagedBlocks);
+        this._loaders.set(id, linkLoader);
+        const sel = parseContext().parseSelector(context.selector);
+        console.log('initiating traversal');
+        traversal({linkLoader})
+          .walkAdv(
+            node,
+            sel,
+            async (progress: TraversalProgress, node: any) => {
+              if (progress.lastBlock) {
+                console.log(progress.path);
+                const cid = progress.lastBlock.link;
+                const blk = await this._stagedBlocks.get(cid);
+                await this.blocks.put(cid, block);
+                await this._stagedBlocks.delete(cid);
+                console.log('processed block', cid.toString());
+                this.updateChannel(id, {
+                  type: 'BLOCK_RECEIVED',
+                  received: blk.byteLength,
+                });
+              }
+            }
+          )
+          .then(() => this.updateChannel(id, 'ALL_BLOCKS_RECEIVED'));
+      } else {
+        const loader = this._loaders.get(id);
+        if (!loader) {
+          throw new Error('loader not found');
+        }
+        loader.publish(cid);
+      }
     } catch (e) {
       // TODO
       console.log(e);
@@ -659,7 +700,6 @@ export class Client {
           }
           switch (gsStatus) {
             case GraphsyncResponseStatus.RequestCompletedFull:
-              this.updateChannel(chid, 'ALL_BLOCKS_RECEIVED');
             case GraphsyncResponseStatus.RequestFailedUnknown:
             case GraphsyncResponseStatus.PartialResponse:
             case GraphsyncResponseStatus.RequestPaused:

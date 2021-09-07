@@ -1,6 +1,7 @@
 import {CID} from 'multiformats';
 import {decode as decodePb} from '@ipld/dag-pb';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
+import {decode as decodeRaw} from 'multiformats/codecs/raw';
 import {Blockstore} from 'interface-blockstore';
 
 enum Kind {
@@ -164,6 +165,22 @@ type PathSegment = {
   s?: string;
   i?: number;
 };
+
+class Path {
+  segments: PathSegment[];
+  constructor(segments: PathSegment[] = []) {
+    this.segments = segments;
+  }
+  toString(): string {
+    return this.segments.reduce((acc: string, seg: PathSegment) => {
+      const segment = seg.s ?? seg.i ?? '';
+      return acc.length ? acc + '/' + segment : '' + segment;
+    }, '');
+  }
+  append(seg: PathSegment): Path {
+    return new Path([...this.segments, seg]);
+  }
+}
 
 interface SelectorSpec {
   node: SelectorNode;
@@ -373,12 +390,81 @@ function parseLimit(node: LimitNode): RecursionLimit {
   }
 }
 
-type VisitorFn = (node: any) => void;
+type VisitorFn = (prog: TraversalProgress, node: any) => void;
+type AsyncVisitorFn = (prog: TraversalProgress, node: any) => Promise<void>;
 
-export function traversal(bs: Blockstore) {
+type WatchCIDFn = (cid: CID) => void;
+
+interface LinkLoader {
+  load(cid: CID): Promise<Uint8Array>;
+}
+
+export class LinkSystem implements LinkLoader {
+  store: Blockstore;
+  constructor(store: Blockstore) {
+    this.store = store;
+  }
+  load(cid: CID): Promise<Uint8Array> {
+    return this.store.get(cid);
+  }
+}
+
+// AsyncLoader waits for a block to be anounced if it is not available in the blockstore
+export class AsyncLoader implements LinkLoader {
+  store: Blockstore;
+  listeners: Map<string, WatchCIDFn> = new Map();
+  constructor(store: Blockstore) {
+    this.store = store;
+  }
+  async load(cid: CID): Promise<Uint8Array> {
+    const has = await this.store.has(cid);
+    if (!has) {
+      await this.waitForBlock(cid);
+      this.listeners.delete(cid.toString());
+    }
+    return this.store.get(cid);
+  }
+  async waitForBlock(cid: CID): Promise<void> {
+    await new Promise((resolve, reject) => {
+      // TODO: timeout
+      const onNextCID = (ncid: CID) => {
+        console.log(ncid.toString());
+        if (ncid.equals(cid)) {
+          resolve(null);
+        }
+      };
+      this.listeners.set(cid.toString(), onNextCID);
+    });
+  }
+  publish(cid: CID) {
+    const cb = this.listeners.get(cid.toString());
+    if (cb) {
+      cb(cid);
+    }
+  }
+}
+
+type TraversalConfig = {
+  linkLoader: LinkLoader;
+  progress?: TraversalProgress;
+};
+
+export type TraversalProgress = {
+  path: Path;
+  lastBlock: {
+    path: Path;
+    link: CID;
+  } | null;
+};
+
+export function traversal(config: TraversalConfig) {
+  let prog: TraversalProgress = config.progress || {
+    path: new Path(),
+    lastBlock: null,
+  };
   return {
-    async walkAdv(node: any, s: Selector, fn: VisitorFn) {
-      fn(node);
+    async walkAdv(node: any, s: Selector, fn: VisitorFn | AsyncVisitorFn) {
+      await fn(prog, node);
       if (typeof node === 'object') {
         const attn = s.interests();
         if (attn.length) {
@@ -387,16 +473,28 @@ export function traversal(bs: Blockstore) {
         return this.iterateAll(node, s, fn);
       }
     },
-    async iterateAll(node: any, selector: Selector, fn: VisitorFn) {
+    async iterateAll(
+      node: any,
+      selector: Selector,
+      fn: VisitorFn | AsyncVisitorFn
+    ) {
       for (const itr = segmentIterator(node); !itr.done(); ) {
         let {pathSegment, value} = itr.next();
         const sNext = selector.explore(node, pathSegment);
         if (sNext !== null) {
+          const progress: TraversalProgress = {
+            path: prog.path.append(pathSegment),
+            lastBlock: null,
+          };
           const cid = CID.asCID(value);
           if (cid) {
             value = await this.loadLink(cid);
+            progress.lastBlock = {
+              path: prog.path,
+              link: cid,
+            };
           }
-          await this.walkAdv(value, sNext, fn);
+          await traversal({...config, progress}).walkAdv(value, sNext, fn);
         }
       }
     },
@@ -404,7 +502,7 @@ export function traversal(bs: Blockstore) {
       value: any,
       attn: PathSegment[],
       s: Selector,
-      fn: VisitorFn
+      fn: VisitorFn | AsyncVisitorFn
     ) {
       const node = new Node(value);
       for (const ps of attn) {
@@ -414,16 +512,25 @@ export function traversal(bs: Blockstore) {
         }
         const sNext = s.explore(value, ps);
         if (sNext !== null) {
+          const progress: TraversalProgress = {
+            path: prog.path.append(ps),
+            lastBlock: null,
+          };
           if (v.kind === Kind.Link) {
-            v = await this.loadLink(v.value);
+            const cid = v.value;
+            v = await this.loadLink(cid);
+            progress.lastBlock = {
+              path: prog.path,
+              link: cid,
+            };
           }
-          await this.walkAdv(v, sNext, fn);
+          await traversal({...config, progress}).walkAdv(v, sNext, fn);
         }
       }
     },
     async loadLink(link: CID): Promise<any> {
       const decode = decoderFor(link);
-      const block = await bs.get(link);
+      const block = await config.linkLoader.load(link);
       return decode(block);
     },
   };
@@ -501,11 +608,13 @@ type Decoder = (data: Uint8Array) => any;
 
 export function decoderFor(cid: CID): Decoder {
   switch (cid.code) {
+    case 0x55:
+      return decodeRaw;
     case 0x70:
       return decodePb;
     case 0x71:
       return decodeCbor;
     default:
-      throw new Error('unsuported codec');
+      throw new Error('unsuported codec: ' + cid.code);
   }
 }
