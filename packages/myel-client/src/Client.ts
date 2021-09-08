@@ -508,7 +508,6 @@ export class Client {
 
       await this._stagedBlocks.put(cid, block.data);
 
-      // TODO: now we need to walk the DAG to verify the data is correct
     } catch (e) {
       // TODO
       console.log(e);
