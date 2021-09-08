@@ -1,4 +1,5 @@
 import {Datastore, Key} from 'interface-datastore';
+import * as BsInterface from 'interface-blockstore';
 import {CID} from 'multiformats';
 import {base32} from 'multiformats/bases/base32';
 
@@ -19,9 +20,10 @@ function cidToKey(cid: CID) {
   );
 }
 
-export class BlockstoreAdapter {
+export class BlockstoreAdapter extends BsInterface.BlockstoreAdapter {
   ds: Datastore;
   constructor(ds: Datastore) {
+    super();
     this.ds = ds;
   }
 

@@ -83,6 +83,10 @@ const receiveBlock = assign<
 });
 const receiveAllBlocks = assign({allReceived: true});
 
+const allBlocksReceived = (context: DealContext, evt: DealEvent) => {
+  return context.allReceived;
+};
+
 export function createChannel(
   id: ChannelID,
   context: DealContext,
@@ -197,7 +201,10 @@ export function createChannel(
                 target: 'ongoing',
                 actions: receiveAllBlocks,
               },
-              TRANSFER_COMPLETED: 'completed',
+              TRANSFER_COMPLETED: [
+                {target: 'completed', cond: allBlocksReceived},
+                {target: 'pendingLastBlocks'},
+              ],
             },
           },
           // pendingLastBlocks is entered when the responder has sent a completion message confirming

@@ -82,9 +82,13 @@ export class PreloadController {
       self.addEventListener('activate', this.activate);
       self.addEventListener('fetch', ((event: FetchEvent) => {
         const url = new URL(event.request.url);
-        const response = this.match(url.pathname);
-        if (response) {
-          event.respondWith(response);
+        try {
+          const response = this.match(url.pathname);
+          if (response) {
+            event.respondWith(response);
+          }
+        } catch (e) {
+          console.log(e);
         }
       }) as EventListener);
       this._installAndActiveListenersAdded = true;
@@ -210,11 +214,7 @@ export class PreloadController {
 
   // do not use before the service worker is fully installed
   async *cat(ipfsPath: string | CID, options = {}) {
-    const file = await exporter(
-      ipfsPath,
-      this._client!.blocks as Blockstore,
-      options
-    );
+    const file = await exporter(ipfsPath, this._client!.blocks, options);
 
     // File may not have unixfs prop if small & imported with rawLeaves true
     if (file.type === 'directory') {

@@ -1,7 +1,6 @@
 import {CID} from 'multiformats';
 import {decode as decodePb} from '@ipld/dag-pb';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
-import {decode as decodeRaw} from 'multiformats/codecs/raw';
 import {Blockstore} from 'interface-blockstore';
 
 enum Kind {
@@ -79,11 +78,9 @@ class Node {
     this.value = value;
   }
   lookupBySegment(seg: PathSegment): Node | null {
-    if (seg.s) {
-      return this.value[seg.s] ?? null;
-    }
-    if (seg.i) {
-      return this.value[seg.i] ?? null;
+    const val = this.value[seg.value];
+    if (val) {
+      return val;
     }
     return null;
   }
@@ -161,10 +158,15 @@ export const entriesSelector: SelectorNode = {
   },
 };
 
-type PathSegment = {
-  s?: string;
-  i?: number;
-};
+class PathSegment {
+  value: string | number;
+  constructor(value: string | number) {
+    this.value = value;
+  }
+  toString(): string {
+    return this.value + '';
+  }
+}
 
 class Path {
   segments: PathSegment[];
@@ -173,7 +175,7 @@ class Path {
   }
   toString(): string {
     return this.segments.reduce((acc: string, seg: PathSegment) => {
-      const segment = seg.s ?? seg.i ?? '';
+      const segment = seg.toString();
       return acc.length ? acc + '/' + segment : '' + segment;
     }, '');
   }
@@ -428,7 +430,6 @@ export class AsyncLoader implements LinkLoader {
     await new Promise((resolve, reject) => {
       // TODO: timeout
       const onNextCID = (ncid: CID) => {
-        console.log(ncid.toString());
         if (ncid.equals(cid)) {
           resolve(null);
         }
@@ -465,22 +466,38 @@ export function traversal(config: TraversalConfig) {
   return {
     async walkAdv(node: any, s: Selector, fn: VisitorFn | AsyncVisitorFn) {
       await fn(prog, node);
-      if (typeof node === 'object') {
-        const attn = s.interests();
-        if (attn.length) {
-          return this.iterateSelective(node, attn, s, fn);
-        }
-        return this.iterateAll(node, s, fn);
+      if (!node) {
+        return;
       }
+      switch (is(node)) {
+        case Kind.Map:
+        case Kind.List:
+          break;
+        default:
+          return;
+      }
+
+      const attn = s.interests();
+      if (attn.length) {
+        return this.iterateSelective(node, attn, s, fn);
+      }
+      return this.iterateAll(node, s, fn);
     },
     async iterateAll(
       node: any,
       selector: Selector,
       fn: VisitorFn | AsyncVisitorFn
     ) {
+      console.log('iterating');
       for (const itr = segmentIterator(node); !itr.done(); ) {
         let {pathSegment, value} = itr.next();
+        if (!pathSegment) {
+          console.log('no path segment');
+          return;
+        }
+        console.log('next: ', pathSegment.toString());
         const sNext = selector.explore(node, pathSegment);
+        console.log('exploring via next selector');
         if (sNext !== null) {
           const progress: TraversalProgress = {
             path: prog.path.append(pathSegment),
@@ -488,7 +505,9 @@ export function traversal(config: TraversalConfig) {
           };
           const cid = CID.asCID(value);
           if (cid) {
+            console.log('loading block', cid.toString());
             value = await this.loadLink(cid);
+            console.log('decoding block');
             progress.lastBlock = {
               path: prog.path,
               link: cid,
@@ -531,13 +550,17 @@ export function traversal(config: TraversalConfig) {
     async loadLink(link: CID): Promise<any> {
       const decode = decoderFor(link);
       const block = await config.linkLoader.load(link);
+      console.log('loaded block');
+      if (!decode) {
+        return block;
+      }
       return decode(block);
     },
   };
 }
 
 type IteratorState = {
-  pathSegment: PathSegment;
+  pathSegment: PathSegment | null;
   value: any;
 };
 
@@ -554,13 +577,13 @@ function arrayIterator(node: Array<any>) {
     next(): IteratorState {
       if (i === node.length) {
         return {
-          pathSegment: {},
+          pathSegment: null,
           value: null,
         };
       }
       const index = i++;
       return {
-        pathSegment: {i: index},
+        pathSegment: new PathSegment(index),
         value: node[index],
       };
     },
@@ -577,13 +600,13 @@ function mapIterator(node: {[key: string]: any}) {
     next(): IteratorState {
       if (i === keys.length) {
         return {
-          pathSegment: {},
+          pathSegment: null,
           value: null,
         };
       }
       const index = i++;
       return {
-        pathSegment: {s: keys[index]},
+        pathSegment: new PathSegment(keys[index]),
         value: node[keys[index]],
       };
     },
@@ -606,10 +629,10 @@ export function getSelector(path: string): SelectorNode {
 
 type Decoder = (data: Uint8Array) => any;
 
-export function decoderFor(cid: CID): Decoder {
+export function decoderFor(cid: CID): Decoder | null {
   switch (cid.code) {
     case 0x55:
-      return decodeRaw;
+      return null;
     case 0x70:
       return decodePb;
     case 0x71:

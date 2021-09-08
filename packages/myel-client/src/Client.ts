@@ -443,6 +443,7 @@ export class Client {
   }
 
   _processTransferMessage(data: Uint8Array) {
+    console.log('processing dt message');
     const dtres: TransferMessage = decode(data);
 
     console.log('new data transfer message', dtres);
@@ -520,7 +521,7 @@ export class Client {
       if (cid.equals(context.root)) {
         const block = await this._stagedBlocks.get(cid);
         await this.blocks.put(cid, block);
-        console.log('processed block', cid.toString());
+        console.log('processed root', cid.toString());
         // cid is equal to the root so this block is trustworthy
         this.updateChannel(id, {
           type: 'BLOCK_RECEIVED',
@@ -528,19 +529,19 @@ export class Client {
         });
         // decode the first node to get the traversal going
         const decode = decoderFor(cid);
+        if (!decode) {
+          return;
+        }
         const node = decode(block);
-        console.log(node);
         const linkLoader = new AsyncLoader(this._stagedBlocks);
         this._loaders.set(id, linkLoader);
         const sel = parseContext().parseSelector(context.selector);
-        console.log('initiating traversal');
         traversal({linkLoader})
           .walkAdv(
             node,
             sel,
             async (progress: TraversalProgress, node: any) => {
               if (progress.lastBlock) {
-                console.log(progress.path);
                 const cid = progress.lastBlock.link;
                 const blk = await this._stagedBlocks.get(cid);
                 await this.blocks.put(cid, block);
@@ -686,12 +687,14 @@ export class Client {
           const mdata = gsres.extensions[GS_EXTENSION_METADATA];
           if (mdata) {
             const metadata: GraphsyncMetadata[] = decode(mdata);
-            console.log(
-              'metadata for ',
-              chid.id,
-              metadata,
-              metadata[i].link.toString()
-            );
+            if (metadata.length) {
+              console.log(
+                'metadata for ',
+                chid.id,
+                metadata,
+                metadata[i].link.toString()
+              );
+            }
 
             for (let i = 0; i < metadata.length; i++) {
               const link = metadata[i].link;
@@ -715,6 +718,7 @@ export class Client {
           }
         } catch (e) {
           // TODO: error handling
+          console.log(e);
         }
       }
     }
