@@ -488,16 +488,12 @@ export function traversal(config: TraversalConfig) {
       selector: Selector,
       fn: VisitorFn | AsyncVisitorFn
     ) {
-      console.log('iterating');
       for (const itr = segmentIterator(node); !itr.done(); ) {
         let {pathSegment, value} = itr.next();
         if (!pathSegment) {
-          console.log('no path segment');
           return;
         }
-        console.log('next: ', pathSegment.toString());
         const sNext = selector.explore(node, pathSegment);
-        console.log('exploring via next selector');
         if (sNext !== null) {
           const progress: TraversalProgress = {
             path: prog.path.append(pathSegment),
@@ -505,9 +501,7 @@ export function traversal(config: TraversalConfig) {
           };
           const cid = CID.asCID(value);
           if (cid) {
-            console.log('loading block', cid.toString());
             value = await this.loadLink(cid);
-            console.log('decoding block');
             progress.lastBlock = {
               path: prog.path,
               link: cid,
@@ -550,7 +544,6 @@ export function traversal(config: TraversalConfig) {
     async loadLink(link: CID): Promise<any> {
       const decode = decoderFor(link);
       const block = await config.linkLoader.load(link);
-      console.log('loaded block');
       if (!decode) {
         return block;
       }

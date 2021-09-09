@@ -34,7 +34,7 @@ const setup = (self: ServiceWorkerGlobalScope) => {
 
   controller.preload([
     {
-      root: 'bafyreiaemos3x3k5fmycs64ry3otobineo4wdz73ccrqxrlzt7gmtzhbmm',
+      root: 'bafyreihln6fhimxmuzu7nmqyhld5l64qub3xasfdrtccjnq6lxbhmmt2oi',
       selector: '/',
       peerAddr:
         '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWRyY5mFxZvQGW9pnywnnzzSnXz59Hb8B3sqVfwEN6Wk41',

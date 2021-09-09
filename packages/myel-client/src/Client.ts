@@ -310,12 +310,8 @@ export class Client {
     [blake2b256.code]: blake2b256,
     [sha256.code]: sha256,
   };
-  // staged blocks are stored in memory while we validate them before persisted in the blockstore
-  private readonly _stagedBlocks: Blockstore = new MemoryBlockstore();
   // loaders is a map of loaders per channel
   private readonly _loaders: Map<ChannelID, AsyncLoader> = new Map();
-  // promise chain for each block to ensure we wait for all of them to be processed before completion messages
-  private readonly _blockPromise: Map<ChannelID, Promise<any>> = new Map();
 
   constructor(options: ClientOptions) {
     this.libp2p = options.libp2p;
@@ -506,8 +502,7 @@ export class Client {
       const hash = await hasher.digest(block.data);
       const cid = CID.create(cidVersion, multicodec, hash);
 
-      await this._stagedBlocks.put(cid, block.data);
-
+      await this.blocks.put(cid, block.data);
     } catch (e) {
       // TODO
       console.log(e);
@@ -518,9 +513,7 @@ export class Client {
     try {
       const {context} = this.getChannelState(id);
       if (cid.equals(context.root)) {
-        const block = await this._stagedBlocks.get(cid);
-        await this.blocks.put(cid, block);
-        console.log('processed root', cid.toString());
+        const block = await this.blocks.get(cid);
         // cid is equal to the root so this block is trustworthy
         this.updateChannel(id, {
           type: 'BLOCK_RECEIVED',
@@ -529,10 +522,12 @@ export class Client {
         // decode the first node to get the traversal going
         const decode = decoderFor(cid);
         if (!decode) {
+          // this is a raw leaf so we've go all the blocks
+          this.updateChannel(id, 'ALL_BLOCKS_RECEIVED');
           return;
         }
         const node = decode(block);
-        const linkLoader = new AsyncLoader(this._stagedBlocks);
+        const linkLoader = new AsyncLoader(this.blocks);
         this._loaders.set(id, linkLoader);
         const sel = parseContext().parseSelector(context.selector);
         traversal({linkLoader})
@@ -542,10 +537,7 @@ export class Client {
             async (progress: TraversalProgress, node: any) => {
               if (progress.lastBlock) {
                 const cid = progress.lastBlock.link;
-                const blk = await this._stagedBlocks.get(cid);
-                await this.blocks.put(cid, block);
-                await this._stagedBlocks.delete(cid);
-                console.log('processed block', cid.toString());
+                const blk = await this.blocks.get(cid);
                 this.updateChannel(id, {
                   type: 'BLOCK_RECEIVED',
                   received: blk.byteLength,
@@ -556,10 +548,9 @@ export class Client {
           .then(() => this.updateChannel(id, 'ALL_BLOCKS_RECEIVED'));
       } else {
         const loader = this._loaders.get(id);
-        if (!loader) {
-          throw new Error('loader not found');
+        if (loader) {
+          loader.publish(cid);
         }
-        loader.publish(cid);
       }
     } catch (e) {
       // TODO
@@ -677,24 +668,9 @@ export class Client {
         try {
           const gsStatus = gsres.status;
           const extData = gsres.extensions[DT_EXTENSION];
-          console.log(
-            'got response for graphsync status',
-            // @ts-ignore
-            graphsyncStatuses[gsStatus],
-            chid.id
-          );
           const mdata = gsres.extensions[GS_EXTENSION_METADATA];
           if (mdata) {
             const metadata: GraphsyncMetadata[] = decode(mdata);
-            if (metadata.length) {
-              console.log(
-                'metadata for ',
-                chid.id,
-                metadata,
-                metadata[i].link.toString()
-              );
-            }
-
             for (let i = 0; i < metadata.length; i++) {
               const link = metadata[i].link;
               await this._processBlock(chid, link);
