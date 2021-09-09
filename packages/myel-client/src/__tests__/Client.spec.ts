@@ -1,6 +1,6 @@
 import {MemoryBlockstore} from 'interface-blockstore';
 import {Client} from '../Client';
-import {allSelector} from '../selectors';
+import {allSelector, entriesSelector} from '../selectors';
 import {MockRPCProvider, MockLibp2p} from './utils';
 import PeerId from 'peer-id';
 import {CID, bytes} from 'multiformats';
@@ -24,61 +24,6 @@ global.crypto = {
 };
 
 describe('MyelClient', () => {
-  test('operates a free transfer', async () => {
-    const rpc = new MockRPCProvider();
-    const blocks = new MemoryBlockstore();
-    const libp2p = new MockLibp2p(
-      PeerId.createFromB58String(
-        '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
-      )
-    );
-    const client = new Client({
-      rpc,
-      blocks,
-      libp2p,
-    });
-    client._dtReqId = 1627988723469;
-
-    const offer = {
-      id: '1',
-      peerAddr:
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
-      cid: CID.parse(
-        'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
-      ),
-      size: 226500,
-      paymentAddress: client.signer.genPrivate(),
-      minPricePerByte: new BN(0),
-      maxPaymentInterval: 0,
-      maxPaymentIntervalIncrease: 0,
-    };
-
-    const ppid = PeerId.createFromB58String(
-      '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
-    );
-
-    const chid = client.load(offer, allSelector);
-
-    expect(client.getChannelState(chid).matches('waitForAcceptance')).toBe(
-      true
-    );
-
-    await client._handleGraphsyncMsg(ppid, fix.gsMsg1);
-
-    expect(client.getChannelState(chid).matches('accepted')).toBe(true);
-    expect(client.getChannelState(chid).context.received).toBe(87);
-
-    await client._handleGraphsyncMsg(ppid, fix.gsMsg2);
-
-    expect(client.getChannelState(chid).matches('ongoing')).toBe(true);
-    expect(client.getChannelState(chid).context.received).toBe(1214);
-    expect(client.getChannelState(chid).context.allReceived).toBe(true);
-
-    await client._processTransferMessage(fix.dtMsgCompleted);
-
-    expect(client.getChannelState(chid).matches('completed')).toBe(true);
-  });
-
   test('handles a free transfer async', async () => {
     const rpc = new MockRPCProvider();
     const blocks = new MemoryBlockstore();
@@ -160,7 +105,7 @@ describe('MyelClient', () => {
     );
 
     const state = await Promise.all([
-      client.loadAsync(offer, allSelector),
+      client.loadAsync(offer, entriesSelector),
       client._handleGraphsyncMsg(ppid, fix.gsMsgSingleBlock),
       client._processTransferMessage(fix.dtMsgSingleBlockComplete),
     ]);
@@ -254,7 +199,9 @@ describe('MyelClient', () => {
             expect(err).toBe(null);
             switch (state.value) {
               case 'waitForAcceptance':
-                client._handleGraphsyncMsg(ppid, fix.gsMsg1);
+                if (state.context.received === 0) {
+                  client._handleGraphsyncMsg(ppid, fix.gsMsg1);
+                }
                 break;
               case 'accepted':
                 if (state.context.received === 87) {
@@ -307,7 +254,9 @@ describe('MyelClient', () => {
             expect(err).toBe(null);
             switch (state.value) {
               case 'waitForAcceptance':
-                client._handleGraphsyncMsg(ppid, fix.gsMsg1);
+                if (state.context.received === 0) {
+                  client._handleGraphsyncMsg(ppid, fix.gsMsg1);
+                }
                 break;
               case 'accepted':
                 client._handleGraphsyncMsg(ppid, fix.gsMsg2);
@@ -427,7 +376,9 @@ describe('MyelClient', () => {
           expect(err).toBe(null);
           switch (state.value) {
             case 'waitForAcceptance':
-              client._handleGraphsyncMsg(ppid, fix.gsMsg1);
+              if (state.context.received === 0) {
+                client._handleGraphsyncMsg(ppid, fix.gsMsg1);
+              }
               break;
             case 'accepted':
               if (state.context.received === 87) {

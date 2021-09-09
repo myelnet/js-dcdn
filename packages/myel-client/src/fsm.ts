@@ -9,7 +9,7 @@ import {
 import BN from 'bn.js';
 import PeerId from 'peer-id';
 import {Address} from '@glif/filecoin-address';
-import {Selector} from './selectors';
+import {SelectorNode} from './selectors';
 
 export type PaymentInfo = {
   chAddr: Address;
@@ -24,7 +24,7 @@ export type ChannelID = {
 
 export interface DealContext {
   root: CID;
-  selector: Selector;
+  selector: SelectorNode;
   received: number;
   totalSize: number;
   allReceived: boolean;
@@ -82,6 +82,10 @@ const receiveBlock = assign<
   received: (ctx, evt) => ctx.received + evt.received,
 });
 const receiveAllBlocks = assign({allReceived: true});
+
+const allBlocksReceived = (context: DealContext, evt: DealEvent) => {
+  return context.allReceived;
+};
 
 export function createChannel(
   id: ChannelID,
@@ -197,7 +201,10 @@ export function createChannel(
                 target: 'ongoing',
                 actions: receiveAllBlocks,
               },
-              TRANSFER_COMPLETED: 'completed',
+              TRANSFER_COMPLETED: [
+                {target: 'completed', cond: allBlocksReceived},
+                {target: 'pendingLastBlocks'},
+              ],
             },
           },
           // pendingLastBlocks is entered when the responder has sent a completion message confirming

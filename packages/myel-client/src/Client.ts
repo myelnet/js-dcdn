@@ -16,7 +16,7 @@ import {from as hasherFrom} from 'multiformats/hashes/hasher';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
 import {Address} from '@glif/filecoin-address';
-import {MemoryBlockstore} from 'interface-blockstore';
+import {MemoryBlockstore, Blockstore} from 'interface-blockstore';
 
 import {RPCProvider} from './FilRPC';
 import {PaychMgr} from './PaychMgr';
@@ -31,7 +31,14 @@ import {
   PaymentInfo,
 } from './fsm';
 import {encodeBigInt, encodeAsBigInt} from './utils';
-import {Selector} from './selectors';
+import {
+  SelectorNode,
+  TraversalProgress,
+  decoderFor,
+  traversal,
+  AsyncLoader,
+  parseContext,
+} from './selectors';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -70,12 +77,6 @@ interface P2P {
     protocols: string[] | string,
     options?: any
   ) => Promise<{stream: MuxedStream; protocol: string}>;
-}
-
-interface Blockstore {
-  put: (key: CID, val: Uint8Array) => Promise<void>;
-  get: (key: CID) => Promise<Uint8Array>;
-  has: (key: CID) => Promise<boolean>;
 }
 
 type ClientOptions = {
@@ -309,8 +310,8 @@ export class Client {
     [blake2b256.code]: blake2b256,
     [sha256.code]: sha256,
   };
-  // staged blocks are stored in memory while we validate them before persisted in the blockstore
-  private readonly _stagedBlocks: Blockstore = new MemoryBlockstore();
+  // loaders is a map of loaders per channel
+  private readonly _loaders: Map<ChannelID, AsyncLoader> = new Map();
 
   constructor(options: ClientOptions) {
     this.libp2p = options.libp2p;
@@ -347,7 +348,7 @@ export class Client {
 
   _newRequest(
     offer: DealOffer,
-    selector: Selector,
+    selector: SelectorNode,
     to: PeerId
   ): TransferRequest {
     const rid = this._dtReqId++;
@@ -382,7 +383,7 @@ export class Client {
   _createChannel(
     reqId: number,
     offer: DealOffer,
-    selector: Selector,
+    selector: SelectorNode,
     initiator: PeerId,
     responder: PeerId,
     callback: (err: Error | null, state: ChannelState) => void,
@@ -438,6 +439,7 @@ export class Client {
   }
 
   _processTransferMessage(data: Uint8Array) {
+    console.log('processing dt message');
     const dtres: TransferMessage = decode(data);
 
     console.log('new data transfer message', dtres);
@@ -500,9 +502,7 @@ export class Client {
       const hash = await hasher.digest(block.data);
       const cid = CID.create(cidVersion, multicodec, hash);
 
-      await this._stagedBlocks.put(cid, block.data);
-
-      // TODO: now we need to walk the DAG to verify the data is correct
+      await this.blocks.put(cid, block.data);
     } catch (e) {
       // TODO
       console.log(e);
@@ -511,15 +511,47 @@ export class Client {
 
   async _processBlock(id: ChannelID, cid: CID) {
     try {
-      const block = await this._stagedBlocks.get(cid);
-
-      await this.blocks.put(cid, block);
-
-      console.log('processed block', cid.toString());
-      this.updateChannel(id, {
-        type: 'BLOCK_RECEIVED',
-        received: block.byteLength,
-      });
+      const {context} = this.getChannelState(id);
+      if (cid.equals(context.root)) {
+        const block = await this.blocks.get(cid);
+        // cid is equal to the root so this block is trustworthy
+        this.updateChannel(id, {
+          type: 'BLOCK_RECEIVED',
+          received: block.byteLength,
+        });
+        // decode the first node to get the traversal going
+        const decode = decoderFor(cid);
+        if (!decode) {
+          // this is a raw leaf so we've go all the blocks
+          this.updateChannel(id, 'ALL_BLOCKS_RECEIVED');
+          return;
+        }
+        const node = decode(block);
+        const linkLoader = new AsyncLoader(this.blocks);
+        this._loaders.set(id, linkLoader);
+        const sel = parseContext().parseSelector(context.selector);
+        traversal({linkLoader})
+          .walkAdv(
+            node,
+            sel,
+            async (progress: TraversalProgress, node: any) => {
+              if (progress.lastBlock) {
+                const cid = progress.lastBlock.link;
+                const blk = await this.blocks.get(cid);
+                this.updateChannel(id, {
+                  type: 'BLOCK_RECEIVED',
+                  received: blk.byteLength,
+                });
+              }
+            }
+          )
+          .then(() => this.updateChannel(id, 'ALL_BLOCKS_RECEIVED'));
+      } else {
+        const loader = this._loaders.get(id);
+        if (loader) {
+          loader.publish(cid);
+        }
+      }
     } catch (e) {
       // TODO
       console.log(e);
@@ -636,22 +668,9 @@ export class Client {
         try {
           const gsStatus = gsres.status;
           const extData = gsres.extensions[DT_EXTENSION];
-          console.log(
-            'got response for graphsync status',
-            // @ts-ignore
-            graphsyncStatuses[gsStatus],
-            chid.id
-          );
           const mdata = gsres.extensions[GS_EXTENSION_METADATA];
           if (mdata) {
             const metadata: GraphsyncMetadata[] = decode(mdata);
-            console.log(
-              'metadata for ',
-              chid.id,
-              metadata,
-              metadata[i].link.toString()
-            );
-
             for (let i = 0; i < metadata.length; i++) {
               const link = metadata[i].link;
               await this._processBlock(chid, link);
@@ -659,7 +678,6 @@ export class Client {
           }
           switch (gsStatus) {
             case GraphsyncResponseStatus.RequestCompletedFull:
-              this.updateChannel(chid, 'ALL_BLOCKS_RECEIVED');
             case GraphsyncResponseStatus.RequestFailedUnknown:
             case GraphsyncResponseStatus.PartialResponse:
             case GraphsyncResponseStatus.RequestPaused:
@@ -675,6 +693,7 @@ export class Client {
           }
         } catch (e) {
           // TODO: error handling
+          console.log(e);
         }
       }
     }
@@ -763,7 +782,7 @@ export class Client {
    */
   load(
     offer: DealOffer,
-    selector: Selector,
+    selector: SelectorNode,
     cb: (err: Error | null, state: ChannelState) => void = () => {}
   ): ChannelID {
     const root = offer.cid;
@@ -814,7 +833,7 @@ export class Client {
   /**
    * loadAsync returns a promise that will get resolved once the transfer is completed of fails
    */
-  loadAsync(offer: DealOffer, selector: Selector): Promise<ChannelState> {
+  loadAsync(offer: DealOffer, selector: SelectorNode): Promise<ChannelState> {
     return new Promise((resolve, reject) => {
       function callback(err: Error | null, state: ChannelState) {
         if (err) {
