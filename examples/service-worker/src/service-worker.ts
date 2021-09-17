@@ -30,14 +30,16 @@ const setup = (self: ServiceWorkerGlobalScope) => {
       },
     },
     privateKey: '9MrAh2EydYTaA7pDWpZa1zaMuL7UxNU5NjZFdr3OR4Q=',
+    // routingUrl: 'http://127.0.0.1:8787',
   });
 
   controller.preload([
     {
-      root: 'bafyreihln6fhimxmuzu7nmqyhld5l64qub3xasfdrtccjnq6lxbhmmt2oi',
+      root: 'bafyreihhmnnulvfqm4t3lz56csrirywbfqylocusz45xbcwxt7vgulw4uy',
       selector: '/',
       peerAddr:
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWRyY5mFxZvQGW9pnywnnzzSnXz59Hb8B3sqVfwEN6Wk41',
+        // '/dns4/ohio.myel.zone/tcp/443/wss/p2p/12D3KooWStJfAywQmfaVFQDQYr9riDnEFG3VJ3qDGcTidvc4nQtc',
+        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWJShhUGeGVdaC2FiqSoS7WquSSKo4jjfrXuZZaPSfAsMT',
       size: 5000000,
       pricePerByte: 0,
       paymentAddress: decodeAddress(

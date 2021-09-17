@@ -7,21 +7,25 @@ const Image = ({name, root}: {name: string; root: string}) => {
 };
 
 const Frogs = () => {
-  const root = 'bafyreiaemos3x3k5fmycs64ry3otobineo4wdz73ccrqxrlzt7gmtzhbmm';
+  const root = 'bafyreihhmnnulvfqm4t3lz56csrirywbfqylocusz45xbcwxt7vgulw4uy';
   return (
     <div className={styles.grid}>
+      {/*
       <div className={styles.card}>
         <Image name="blue-frog.jpg" root={root} />
       </div>
+	*/}
       <div className={styles.card}>
         <Image name="green-frog.jpg" root={root} />
       </div>
+      {/*
       <div className={styles.card}>
         <Image name="orange-frog.jpg" root={root} />
       </div>
       <div className={styles.card}>
         <Image name="red-frog.jpg" root={root} />
       </div>
+	*/}
     </div>
   );
 };
@@ -55,7 +59,7 @@ export default function Home() {
 
         <p className={styles.description}>Retrieve content from a Myel POP</p>
 
-        {cached && <Icons />}
+        {cached && <Frogs />}
       </main>
 
       <footer className={styles.footer}>

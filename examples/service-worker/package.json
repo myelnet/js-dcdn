@@ -65,7 +65,7 @@
     "marked": "1.2.7",
     "mime-types": "^2.1.32",
     "mini-css-extract-plugin": "0.11.3",
-    "multiaddr": "^9.0.1",
+    "multiaddr": "^10.0.1",
     "myel-client": "../../packages/myel-client/",
     "optimize-css-assets-webpack-plugin": "5.0.4",
     "peer-id": "^0.14.8",
