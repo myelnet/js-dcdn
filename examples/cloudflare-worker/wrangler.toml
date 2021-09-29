@@ -1,0 +1,11 @@
+name = "myel-client"
+type = "javascript"
+zone_id = ""
+account_id = "b4634902249fe28a3f39234db9bb371a"
+route = ""
+workers_dev = true
+
+[build]
+command = "yarn && yarn run build"
+[build.upload]
+format = "service-worker"

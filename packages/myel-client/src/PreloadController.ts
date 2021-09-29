@@ -2,7 +2,7 @@ import {CID} from 'multiformats';
 import {decode as decodePb} from '@ipld/dag-pb';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {exporter} from 'ipfs-unixfs-exporter';
-import mime from 'mime-types';
+import mime from 'mime/lite';
 import Libp2p, {Libp2pOptions} from 'libp2p';
 // @ts-ignore
 import IdbStore from 'datastore-idb';
@@ -63,6 +63,9 @@ function toPathComponents(path = ''): string[] {
   // split on / unless escaped with \
   return (path.trim().match(/([^\\^/]|\\\/)+/g) || []).filter(Boolean);
 }
+
+const start = 'request-start';
+const end = 'request-end';
 
 export class PreloadController {
   private _client?: Client;
@@ -163,6 +166,7 @@ export class PreloadController {
     if (!this._client) {
       throw new Error('client is not initialized');
     }
+    performance.mark(start);
     // check if we have the blocks already
     const block = await this._client.blocks.get(root);
 
@@ -203,9 +207,14 @@ export class PreloadController {
         const body = toReadableStream(content);
         const headers: {[key: string]: any} = {};
         const extension = key.split('.').pop() as string;
-        if (extension && mime.lookup(extension)) {
-          headers['content-type'] = mime.lookup(extension);
+        if (extension && mime.getType(extension)) {
+          headers['content-type'] = mime.getType(extension);
         }
+        performance.mark(end);
+        performance.measure('measure start to finish', start, end);
+        console.log(performance.getEntriesByType('measure'));
+
+        performance.clearMarks();
         return new Response(body, {
           status: 200,
           headers,
