@@ -5,19 +5,18 @@ import Mplex from 'libp2p-mplex';
 import {
   Client,
   FilRPC,
-  BlockstoreAdapter,
   DealOffer,
   getSelector,
+  decodeFilAddress,
 } from 'myel-client';
-import {decode as decodeAddress} from '@glif/filecoin-address';
 import Libp2p from 'libp2p';
 import {CID} from 'multiformats';
-import {MemoryDatastore} from 'datastore-core/memory';
 import {BN} from 'bn.js';
 import {decode as decodePb} from '@ipld/dag-pb';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {exporter} from 'ipfs-unixfs-exporter';
 import mime from 'mime/lite';
+import {BlockstoreAdapter} from './blockstore';
 
 function toPathComponents(path = ''): string[] {
   // split on / unless escaped with \
@@ -58,7 +57,9 @@ async function loadOffer(root: CID): Promise<DealOffer> {
     minPricePerByte: new BN(0),
     maxPaymentInterval: 1 << 20,
     maxPaymentIntervalIncrease: 1 << 20,
-    paymentAddress: decodeAddress('f13t4qv2lvlwowq67d2txl7auiddhlppca3nw5yxa'),
+    paymentAddress: decodeFilAddress(
+      'f13t4qv2lvlwowq67d2txl7auiddhlppca3nw5yxa'
+    ),
   };
 }
 
@@ -78,18 +79,16 @@ export async function handleRequest(request: Request): Promise<Response> {
     config: {
       transport: {
         [Websockets.prototype[Symbol.toStringTag]]: {
-          filter: filters.all,
+          filter: filters.dnsWss,
         },
       },
     },
   };
-  const ds = new MemoryDatastore();
-  await ds.open();
 
   const libp2p = await Libp2p.create(lopts);
   await libp2p.start();
 
-  const blocks = new BlockstoreAdapter(ds);
+  const blocks = new BlockstoreAdapter();
   const client = new Client({
     libp2p,
     blocks,
@@ -114,7 +113,7 @@ export async function handleRequest(request: Request): Promise<Response> {
   const offer = await loadOffer(root);
 
   await client.loadAsync(offer, getSelector('/'));
-  //
+
   // check if we have the blocks already
   const block = await blocks.get(root);
 
@@ -134,7 +133,7 @@ export async function handleRequest(request: Request): Promise<Response> {
   // for now we assume our node is a unixfs directory
   for (const link of node.Links) {
     if (key === link.Name) {
-      const has = await client.blocks.has(link.Hash);
+      const has = await blocks.has(link.Hash);
       if (!has) {
         const noffer = {
           ...offer,

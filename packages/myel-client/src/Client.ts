@@ -15,7 +15,7 @@ import blakejs from 'blakejs';
 import {from as hasherFrom} from 'multiformats/hashes/hasher';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
-import {Address} from '@glif/filecoin-address';
+import {Address} from './filaddress';
 import {MemoryBlockstore, Blockstore} from 'interface-blockstore';
 
 import {RPCProvider} from './FilRPC';

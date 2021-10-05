@@ -4,14 +4,11 @@ import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {exporter} from 'ipfs-unixfs-exporter';
 import mime from 'mime/lite';
 import Libp2p, {Libp2pOptions} from 'libp2p';
-// @ts-ignore
-import IdbStore from 'datastore-idb';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
-import {Address} from '@glif/filecoin-address';
+import {Address} from './filaddress';
 import {Multiaddr} from 'multiaddr';
-import {Blockstore} from 'interface-blockstore';
-import {BlockstoreAdapter} from './BlockstoreAdapter';
+import {Blockstore, MemoryBlockstore} from 'interface-blockstore';
 import {Client, DealOffer} from './Client';
 import {getSelector} from './selectors';
 import {FilRPC} from './FilRPC';
@@ -22,6 +19,7 @@ type ControllerOptions = {
   rpcUrl?: string;
   routingUrl?: string;
   privateKey?: string;
+  blocks?: Blockstore;
 };
 
 type ContentEntry = {
@@ -63,9 +61,6 @@ function toPathComponents(path = ''): string[] {
   // split on / unless escaped with \
   return (path.trim().match(/([^\\^/]|\\\/)+/g) || []).filter(Boolean);
 }
-
-const start = 'request-start';
-const end = 'request-end';
 
 export class PreloadController {
   private _client?: Client;
@@ -109,10 +104,7 @@ export class PreloadController {
 
   install(event: ExtendableEvent): Promise<void> {
     const promise = (async () => {
-      const ds = new IdbStore('myel/client');
-      await ds.open();
-
-      const blocks = new BlockstoreAdapter(ds);
+      const blocks = this._options.blocks ?? new MemoryBlockstore();
 
       const libp2p = await Libp2p.create(this._options);
       await libp2p.start();
@@ -166,7 +158,6 @@ export class PreloadController {
     if (!this._client) {
       throw new Error('client is not initialized');
     }
-    performance.mark(start);
     // check if we have the blocks already
     const block = await this._client.blocks.get(root);
 
@@ -210,11 +201,7 @@ export class PreloadController {
         if (extension && mime.getType(extension)) {
           headers['content-type'] = mime.getType(extension);
         }
-        performance.mark(end);
-        performance.measure('measure start to finish', start, end);
-        console.log(performance.getEntriesByType('measure'));
 
-        performance.clearMarks();
         return new Response(body, {
           status: 200,
           headers,

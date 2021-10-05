@@ -4,6 +4,7 @@ import typescript from '@rollup/plugin-typescript';
 import babel from '@rollup/plugin-babel';
 import commonjs from '@rollup/plugin-commonjs';
 import pkg from './package.json';
+// import {visualizer} from 'rollup-plugin-visualizer';
 
 const extensions = ['.js', '.ts', '.tsx'];
 
@@ -23,13 +24,16 @@ function getBabelOptions() {
     comments: false,
     babelHelpers: 'bundled',
     babelrc: false,
-    ignore: ['./node_modules'],
+    ignore: ['./node_modules', './src/__tests__'],
     presets: [
       [
         '@babel/preset-env',
         {
           loose: true,
           modules: false,
+          targets: {
+            esmodules: true,
+          },
         },
       ],
     ],
@@ -47,7 +51,13 @@ export default [
       dir: 'dist',
     },
     external,
-    plugins: [typescript({declaration: true, outDir: 'dist'})],
+    plugins: [
+      typescript({
+        declaration: true,
+        outDir: 'dist',
+        exclude: ['**/__tests__', '**/*.spec.ts'],
+      }),
+    ],
   },
   {
     input: 'src/index.ts',

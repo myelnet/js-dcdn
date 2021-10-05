@@ -2,7 +2,7 @@ import {createChannel, Channel} from '../fsm';
 import PeerId from 'peer-id';
 import {CID} from 'multiformats';
 import {BN} from 'bn.js';
-import {decode as decodeAddress} from '@glif/filecoin-address';
+import {decodeFilAddress} from '../filaddress';
 
 describe('fsm', () => {
   const initiator = PeerId.createFromB58String(
@@ -73,7 +73,7 @@ describe('fsm', () => {
     service.send({
       type: 'PAYCH_READY',
       paymentInfo: {
-        chAddr: decodeAddress('f2s3tpuynlyzpdgiexvucmebrs2of4jrfepgtg76y'),
+        chAddr: decodeFilAddress('f2s3tpuynlyzpdgiexvucmebrs2of4jrfepgtg76y'),
         lane: 0n,
       },
     });
@@ -136,7 +136,7 @@ describe('fsm', () => {
     service.send({
       type: 'PAYCH_READY',
       paymentInfo: {
-        chAddr: decodeAddress('f2s3tpuynlyzpdgiexvucmebrs2of4jrfepgtg76y'),
+        chAddr: decodeFilAddress('f2s3tpuynlyzpdgiexvucmebrs2of4jrfepgtg76y'),
         lane: 0n,
       },
     });

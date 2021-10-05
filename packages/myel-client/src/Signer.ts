@@ -1,5 +1,5 @@
 import {BN} from 'bn.js';
-import {Address, newSecp256k1Address} from '@glif/filecoin-address';
+import {Address, newSecp256k1Address} from './filaddress';
 import {ec as EC} from 'elliptic';
 import {blake2b} from 'blakejs';
 import {bytes} from 'multiformats';

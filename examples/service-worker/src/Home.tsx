@@ -1,13 +1,41 @@
 import * as React from 'react';
+import {Profiler, useState} from 'react';
 import styles from './Home.module.css';
 import {useStore} from './store';
 
 const Image = ({name, root}: {name: string; root: string}) => {
-  return <img src={'/' + root + '/' + name} alt={name} />;
+  const path = root + '/' + name;
+  const [, set] = useState(false);
+  return <img src={path} alt={name} onLoad={() => set(true)} />;
 };
 
 const Frogs = () => {
   const root = 'bafyreiaemos3x3k5fmycs64ry3otobineo4wdz73ccrqxrlzt7gmtzhbmm';
+  return (
+    <div className={styles.grid}>
+      <div className={styles.card}>
+        <Profiler
+          id="blue-frog"
+          onRender={(...data) => console.log('profiler', data)}>
+          <Image name="blue-frog.jpg" root={root} />
+        </Profiler>
+      </div>
+      <div className={styles.card}>
+        <Image name="green-frog.jpg" root={root} />
+      </div>
+      <div className={styles.card}>
+        <Image name="orange-frog.jpg" root={root} />
+      </div>
+      <div className={styles.card}>
+        <Image name="red-frog.jpg" root={root} />
+      </div>
+    </div>
+  );
+};
+
+const FrogsFromGateway = () => {
+  const root =
+    'http://localhost:2001/bafyreiaemos3x3k5fmycs64ry3otobineo4wdz73ccrqxrlzt7gmtzhbmm';
   return (
     <div className={styles.grid}>
       <div className={styles.card}>
@@ -55,7 +83,12 @@ export default function Home() {
 
         <p className={styles.description}>Retrieve content from a Myel POP</p>
 
-        {cached && <Frogs />}
+        {cached && (
+          <>
+            <FrogsFromGateway />
+            <Frogs />
+          </>
+        )}
       </main>
 
       <footer className={styles.footer}>

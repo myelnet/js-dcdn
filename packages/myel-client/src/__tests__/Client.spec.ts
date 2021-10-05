@@ -5,11 +5,7 @@ import {MockRPCProvider, MockLibp2p} from './utils';
 import PeerId from 'peer-id';
 import {CID, bytes} from 'multiformats';
 import {BN} from 'bn.js';
-import {
-  newIDAddress,
-  newActorAddress,
-  decode as decodeAddress,
-} from '@glif/filecoin-address';
+import {newIDAddress, newActorAddress, decodeFilAddress} from '../filaddress';
 import {encode} from '@ipld/dag-cbor';
 import {ChannelState, DealState} from '../fsm';
 import * as fix from './fixtures';
@@ -363,7 +359,7 @@ describe('MyelClient', () => {
       minPricePerByte: new BN(1),
       maxPaymentInterval: 1 << 20,
       maxPaymentIntervalIncrease: 1 << 20,
-      paymentChannel: decodeAddress(
+      paymentChannel: decodeFilAddress(
         'f2kg3awbapuij6zbory6zlvpd5ob6dhqrzlr2ekgq'
       ),
     };

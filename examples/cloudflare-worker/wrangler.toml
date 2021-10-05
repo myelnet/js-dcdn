@@ -1,11 +1,12 @@
-name = "myel-client"
+name = "client"
 type = "javascript"
 zone_id = ""
 account_id = "b4634902249fe28a3f39234db9bb371a"
 route = ""
 workers_dev = true
+compatibility_date = "2021-09-30"
 
 [build]
-command = "yarn && yarn run build"
+command = "yarn && yarn build"
 [build.upload]
 format = "service-worker"

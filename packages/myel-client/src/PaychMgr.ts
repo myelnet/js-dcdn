@@ -1,4 +1,4 @@
-import {Address, newIDAddress} from '@glif/filecoin-address';
+import {Address, newIDAddress} from './filaddress';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
 import {CID, digest, bytes} from 'multiformats';

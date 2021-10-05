@@ -8,7 +8,7 @@ import {
 } from '@xstate/fsm';
 import BN from 'bn.js';
 import PeerId from 'peer-id';
-import {Address} from '@glif/filecoin-address';
+import {Address} from './filaddress';
 import {SelectorNode} from './selectors';
 
 export type PaymentInfo = {
