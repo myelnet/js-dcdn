@@ -2,13 +2,7 @@ import Websockets from 'libp2p-websockets';
 import filters from 'libp2p-websockets/src/filters';
 import {Noise} from 'libp2p-noise/dist/src/noise';
 import Mplex from 'libp2p-mplex';
-import {
-  Client,
-  FilRPC,
-  DealOffer,
-  getSelector,
-  decodeFilAddress,
-} from 'myel-client';
+import {Client, FilRPC, DealOffer, getSelector, Address} from 'myel-client';
 import Libp2p from 'libp2p';
 import {CID} from 'multiformats';
 import {BN} from 'bn.js';
@@ -17,10 +11,43 @@ import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {exporter} from 'ipfs-unixfs-exporter';
 import mime from 'mime/lite';
 import {BlockstoreAdapter} from './blockstore';
+import {Multiaddr} from 'multiaddr';
+
+declare const RECORDS: KVNamespace;
+
+const MAX_RECORDS = 5;
 
 function toPathComponents(path = ''): string[] {
   // split on / unless escaped with \
   return (path.trim().match(/([^\\^/]|\\\/)+/g) || []).filter(Boolean);
+}
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
+
+function handleOptions(request: Request) {
+  // Make sure the necessary headers are present
+  // for this to be a valid pre-flight request
+  const headers = request.headers;
+  if (
+    headers.get('Origin') !== null &&
+    headers.get('Access-Control-Request-Method') !== null &&
+    headers.get('Access-Control-Request-Headers') !== null
+  ) {
+    return new Response(null, {
+      headers: corsHeaders,
+    });
+  } else {
+    // Handle standard OPTIONS request.
+    return new Response(null, {
+      headers: {
+        Allow: 'GET, HEAD, POST, OPTIONS',
+      },
+    });
+  }
 }
 
 function toReadableStream<T>(
@@ -49,21 +76,42 @@ function toReadableStream<T>(
 }
 
 async function loadOffer(root: CID): Promise<DealOffer> {
-  return {
-    id: '1',
-    peerAddr: '',
-    cid: root,
-    size: 100,
-    minPricePerByte: new BN(0),
-    maxPaymentInterval: 1 << 20,
-    maxPaymentIntervalIncrease: 1 << 20,
-    paymentAddress: decodeFilAddress(
-      'f13t4qv2lvlwowq67d2txl7auiddhlppca3nw5yxa'
-    ),
-  };
+  const {keys} = await RECORDS.list({prefix: root.toString()});
+  const results: DealOffer[] = [];
+  let id = 1;
+  for (const k of keys) {
+    const rec = await RECORDS.get(k.name, {type: 'arrayBuffer'});
+    if (rec) {
+      const fields: any[] = decodeCbor(new Uint8Array(rec));
+      const maddr = new Multiaddr(fields[0]);
+      results.push({
+        id: String(id++),
+        peerAddr: maddr.toString(),
+        cid: root,
+        size: fields[2],
+        minPricePerByte: new BN(0),
+        maxPaymentInterval: 1 << 20,
+        maxPaymentIntervalIncrease: 1 << 20,
+        paymentAddress: new Address(fields[1]),
+      });
+    }
+    if (results.length === MAX_RECORDS) {
+      break;
+    }
+  }
+  // for now we return the first option but we can have a better
+  // location based selection
+  return results[0];
 }
 
 export async function handleRequest(request: Request): Promise<Response> {
+  if (request.method === 'OPTIONS') {
+    return handleOptions(request);
+  }
+
+  if (request.method !== 'GET') {
+    return fetch(request);
+  }
   const url = new URL(request.url);
   const segments = toPathComponents(url.pathname);
 
@@ -130,6 +178,25 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
 
   const node = decode(block);
+
+  if (!Array.isArray(node.Links)) {
+    throw new Error('no content');
+  }
+
+  // If the query isn't for a specific key return a list of all items as JSON
+  if (!key) {
+    const links = node.Links.map((l) => ({
+      name: l.Name,
+      size: l.Tsize,
+      cid: l.Hash,
+    }));
+    return new Response(JSON.stringify(links), {
+      headers: {
+        ...corsHeaders,
+        'content-type': 'application/json',
+      },
+    });
+  }
   // for now we assume our node is a unixfs directory
   for (const link of node.Links) {
     if (key === link.Name) {
@@ -144,7 +211,7 @@ export async function handleRequest(request: Request): Promise<Response> {
       }
       const content = cat(link.Hash);
       const body = toReadableStream(content);
-      const headers: {[key: string]: any} = {};
+      const headers: {[key: string]: any} = corsHeaders;
       const extension = key.split('.').pop() as string;
       if (extension && mime.getType(extension)) {
         headers['content-type'] = mime.getType(extension);

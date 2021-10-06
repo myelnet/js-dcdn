@@ -2,6 +2,7 @@ import {BN} from 'bn.js';
 import {base32} from 'multiformats/bases/base32';
 import {base16} from 'multiformats/bases/base16';
 import {blake2b} from 'blakejs';
+import {Buffer} from 'buffer';
 
 // copied from @glif/filecoin-address to avoid bundle duplications
 

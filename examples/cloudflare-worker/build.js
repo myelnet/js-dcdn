@@ -84,6 +84,11 @@ let dedupePlugin = {
         path: path.join(process.cwd(), 'node_modules/protobufjs/minimal.js'),
       };
     });
+    build.onResolve({filter: /^debug$/}, (args) => {
+      return {
+        path: path.join(process.cwd(), 'node_modules/debug/src/browser.js'),
+      };
+    });
     build.onResolve({filter: /package\.json$/}, (args) => {
       if (/libp2p/.test(args.importer)) {
         return {

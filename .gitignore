@@ -4,3 +4,4 @@ build/
 *.swp
 *.swo
 dist
+yarn-error.log
