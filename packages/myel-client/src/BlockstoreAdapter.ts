@@ -9,7 +9,7 @@ class DsKey extends Key {
   }
 }
 
-function cidToKey(cid: CID) {
+export function cidToKey(cid: CID) {
   if (!CID.asCID(cid)) {
     throw new Error('Not a valid cid');
   }
