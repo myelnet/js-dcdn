@@ -2,15 +2,13 @@ import {CID} from 'multiformats';
 import {decode as decodePb} from '@ipld/dag-pb';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {exporter} from 'ipfs-unixfs-exporter';
-import mime from 'mime-types';
+import mime from 'mime/lite';
 import Libp2p, {Libp2pOptions} from 'libp2p';
-// @ts-ignore
-import IdbStore from 'datastore-idb';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
-import {Address} from '@glif/filecoin-address';
-import {Blockstore} from 'interface-blockstore';
-import {BlockstoreAdapter} from './BlockstoreAdapter';
+import {Address} from './filaddress';
+import {Multiaddr} from 'multiaddr';
+import {Blockstore, MemoryBlockstore} from 'interface-blockstore';
 import {Client, DealOffer} from './Client';
 import {getSelector} from './selectors';
 import {FilRPC} from './FilRPC';
@@ -19,7 +17,9 @@ declare let self: ServiceWorkerGlobalScope;
 
 type ControllerOptions = {
   rpcUrl?: string;
+  routingUrl?: string;
   privateKey?: string;
+  blocks?: Blockstore;
 };
 
 type ContentEntry = {
@@ -66,6 +66,7 @@ export class PreloadController {
   private _client?: Client;
   private _installAndActiveListenersAdded?: boolean;
   private readonly _cidToContentEntry: Map<string, ContentEntry> = new Map();
+  private readonly _cidToRecords: Map<string, DealOffer[]> = new Map();
   private readonly _options: Libp2pOptions & ControllerOptions;
 
   constructor(options: Libp2pOptions & ControllerOptions) {
@@ -103,10 +104,7 @@ export class PreloadController {
 
   install(event: ExtendableEvent): Promise<void> {
     const promise = (async () => {
-      const ds = new IdbStore('myel/client');
-      await ds.open();
-
-      const blocks = new BlockstoreAdapter(ds);
+      const blocks = this._options.blocks ?? new MemoryBlockstore();
 
       const libp2p = await Libp2p.create(this._options);
       await libp2p.start();
@@ -125,7 +123,7 @@ export class PreloadController {
       for (const [cid, entry] of this._cidToContentEntry) {
         const root = CID.parse(cid);
         await this._client.loadAsync(
-          this.offerFromEntry(root, entry),
+          await this.offerFromEntry(root, entry),
           getSelector(entry.selector)
         );
       }
@@ -192,7 +190,7 @@ export class PreloadController {
             entry.size = link.Tsize;
           }
           await this._client.loadAsync(
-            this.offerFromEntry(link.Hash, entry),
+            await this.offerFromEntry(link.Hash, entry),
             getSelector('*')
           );
         }
@@ -200,9 +198,10 @@ export class PreloadController {
         const body = toReadableStream(content);
         const headers: {[key: string]: any} = {};
         const extension = key.split('.').pop() as string;
-        if (extension && mime.lookup(extension)) {
-          headers['content-type'] = mime.lookup(extension);
+        if (extension && mime.getType(extension)) {
+          headers['content-type'] = mime.getType(extension);
         }
+
         return new Response(body, {
           status: 200,
           headers,
@@ -228,7 +227,36 @@ export class PreloadController {
     yield* file.content(options);
   }
 
-  offerFromEntry(root: CID, entry: ContentEntry): DealOffer {
+  async offerFromEntry(root: CID, entry: ContentEntry): Promise<DealOffer> {
+    if (this._options.routingUrl) {
+      const key = root.toString();
+      // check if we already have records
+      const recs = this._cidToRecords.get(key);
+      if (recs) {
+        return recs[0];
+      }
+      const raw = await fetch(this._options.routingUrl + '/' + key).then(
+        (resp) => resp.arrayBuffer()
+      );
+      const deferred: Uint8Array[] = decodeCbor(new Uint8Array(raw));
+      const records: DealOffer[] = deferred.map((def, i) => {
+        const rec: any[] = decodeCbor(def);
+        const maddr = new Multiaddr(rec[0]);
+        // id is used to keep track of the order of relevance
+        return {
+          id: String(i),
+          peerAddr: maddr.toString(),
+          cid: root,
+          size: rec[2],
+          minPricePerByte: new BN(entry.pricePerByte),
+          maxPaymentInterval: 1 << 20,
+          maxPaymentIntervalIncrease: 1 << 20,
+          paymentAddress: new Address(rec[1]),
+        };
+      });
+      this._cidToRecords.set(key, records);
+      return records[0];
+    }
     return {
       id: '1',
       peerAddr: entry.peerAddr,

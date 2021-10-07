@@ -1,6 +1,7 @@
-import {Address, newIDAddress} from '@glif/filecoin-address';
+import {Address, newIDAddress} from './filaddress';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
+import {Buffer} from 'buffer';
 import {CID, digest, bytes} from 'multiformats';
 import * as raw from 'multiformats/codecs/raw';
 import {RPCProvider} from './FilRPC';

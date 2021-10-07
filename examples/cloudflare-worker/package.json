@@ -1,0 +1,48 @@
+{
+  "name": "cloudflare-worker",
+  "version": "1.0.0",
+  "description": "Myel client inside Cloudflare worker",
+  "main": "dist/worker.js",
+  "scripts": {
+    "build": "node build.js",
+    "format": "prettier --write  '*.{json,js}' 'src/**/*.{js,ts}' 'test/**/*.{js,ts}'",
+    "lint": "eslint --max-warnings=0 src && prettier --check '*.{json,js}' 'src/**/*.{js,ts}' 'test/**/*.{js,ts}'",
+    "test": "jest --config jestconfig.json --verbose"
+  },
+  "eslintConfig": {
+    "root": true,
+    "extends": [
+      "typescript",
+      "prettier"
+    ]
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^2.2.2",
+    "@types/jest": "^26.0.23",
+    "@types/mime": "^2.0.3",
+    "@types/service-worker-mock": "^2.0.1",
+    "@typescript-eslint/eslint-plugin": "^4.16.1",
+    "@typescript-eslint/parser": "^4.16.1",
+    "esbuild": "^0.13.3",
+    "eslint": "^7.21.0",
+    "eslint-config-prettier": "^8.1.0",
+    "eslint-config-typescript": "^3.0.0",
+    "jest": "^27.0.1",
+    "prettier": "^2.3.0",
+    "service-worker-mock": "^2.0.5",
+    "ts-jest": "^27.0.1",
+    "ts-loader": "^9.2.2",
+    "typescript": "^4.3.2"
+  },
+  "dependencies": {
+    "cborg": "^1.5.0",
+    "datastore-core": "^6.0.7",
+    "libp2p": "^0.33.0",
+    "libp2p-mplex": "^0.10.4",
+    "libp2p-noise": "../../../js-libp2p-noise",
+    "libp2p-websockets": "../../../js-libp2p-websockets",
+    "mime": "^2.5.2",
+    "multiaddr": "^10.0.1",
+    "myel-client": "../../packages/myel-client"
+  }
+}

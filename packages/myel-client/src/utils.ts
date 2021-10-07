@@ -1,4 +1,5 @@
 import BN from 'bn.js';
+import {Buffer} from 'buffer';
 
 export function encodeAsBigInt(int: string): Uint8Array {
   if (int === '0') {

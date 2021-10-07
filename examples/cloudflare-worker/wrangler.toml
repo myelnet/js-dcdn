@@ -1,0 +1,16 @@
+name = "client"
+type = "javascript"
+zone_id = ""
+account_id = "b4634902249fe28a3f39234db9bb371a"
+route = ""
+workers_dev = true
+compatibility_date = "2021-09-30"
+
+kv_namespaces = [
+  { binding = "RECORDS", preview_id = "a0f1e11b7ead4af2bb208059c4240c09", id = "b1cb210d3a624b96ab1597f8491ebc11" }
+]
+
+[build]
+command = "yarn build"
+[build.upload]
+format = "service-worker"

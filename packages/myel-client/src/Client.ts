@@ -15,7 +15,7 @@ import blakejs from 'blakejs';
 import {from as hasherFrom} from 'multiformats/hashes/hasher';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
-import {Address} from '@glif/filecoin-address';
+import {Address} from './filaddress';
 import {MemoryBlockstore, Blockstore} from 'interface-blockstore';
 
 import {RPCProvider} from './FilRPC';
@@ -79,11 +79,17 @@ interface P2P {
   ) => Promise<{stream: MuxedStream; protocol: string}>;
 }
 
+export enum EnvType {
+  ServiceWorker = 1,
+  CloudflareWorker,
+}
+
 type ClientOptions = {
   libp2p: P2P;
   blocks: Blockstore;
   rpc: RPCProvider;
   rpcMsgTimeout?: number;
+  envType?: EnvType;
 };
 
 export type DealOffer = {
@@ -294,6 +300,8 @@ export class Client {
   paychMgr: PaychMgr;
   // address to use by default when paying for things
   defaultAddress: Address;
+  // envType declares what kind of environment the client is running in
+  envType: EnvType = EnvType.ServiceWorker;
 
   // data transfer request ID. It is currently used for deal ID too. Based on Date for better uniqueness.
   _dtReqId: number = Date.now();
@@ -316,6 +324,10 @@ export class Client {
   constructor(options: ClientOptions) {
     this.libp2p = options.libp2p;
     this.blocks = options.blocks;
+
+    if (options.envType) {
+      this.envType = options.envType;
+    }
 
     this.signer = new Secp256k1Signer();
     this.defaultAddress = this.signer.genPrivate();
@@ -699,9 +711,21 @@ export class Client {
     }
   }
 
+  _dialOptions(): any {
+    const options: any = {};
+    if (this.envType === EnvType.CloudflareWorker) {
+      options.cloudflareWorker = true;
+    }
+    return options;
+  }
+
   async _sendGraphsyncMsg(to: PeerId, msg: GraphsyncMessage) {
     try {
-      const {stream} = await this.libp2p.dialProtocol(to, GS_PROTOCOL);
+      const {stream} = await this.libp2p.dialProtocol(
+        to,
+        GS_PROTOCOL,
+        this._dialOptions()
+      );
       const bytes = gsMsg.Message.encode(msg);
       await pipe([bytes], lp.encode(), stream);
     } catch (e) {
@@ -711,7 +735,11 @@ export class Client {
 
   async _sendDataTransferMsg(to: PeerId, msg: TransferRequest) {
     try {
-      const {stream} = await this.libp2p.dialProtocol(to, DT_PROTOCOL);
+      const {stream} = await this.libp2p.dialProtocol(
+        to,
+        DT_PROTOCOL,
+        this._dialOptions()
+      );
       const bytes = encode({
         IsRq: true,
         Request: msg,

@@ -2,8 +2,8 @@ import {
   newSecp256k1Address,
   newIDAddress,
   newActorAddress,
-  decode as decodeAddress,
-} from '@glif/filecoin-address';
+  decodeFilAddress,
+} from '../filaddress';
 import {BN} from 'bn.js';
 import {bytes} from 'multiformats';
 import {encode} from '@ipld/dag-cbor';
@@ -159,7 +159,7 @@ describe('paych', () => {
 
   test('encode voucher', () => {
     const voucher = new FilecoinVoucher(new BN(1214), 0n);
-    voucher.channelAddr = decodeAddress(
+    voucher.channelAddr = decodeFilAddress(
       'f2s3tpuynlyzpdgiexvucmebrs2of4jrfepgtg76y'
     );
     voucher.nonce = 1;
