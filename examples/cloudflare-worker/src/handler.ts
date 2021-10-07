@@ -17,10 +17,11 @@ import {decode as decodePb} from '@ipld/dag-pb';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {exporter} from 'ipfs-unixfs-exporter';
 import mime from 'mime/lite';
-import {BlockstoreAdapter} from './blockstore';
+import {KVBlockstore} from './kv-blockstore';
 import {Multiaddr} from 'multiaddr';
 
 declare const RECORDS: KVNamespace;
+declare const BLOCKS: KVNamespace;
 
 const MAX_RECORDS = 5;
 
@@ -143,7 +144,7 @@ export async function handleRequest(request: Request): Promise<Response> {
   const libp2p = await Libp2p.create(lopts);
   await libp2p.start();
 
-  const blocks = new BlockstoreAdapter();
+  const blocks = new KVBlockstore(BLOCKS);
   const client = new Client({
     libp2p,
     blocks,
@@ -167,11 +168,20 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
 
   const offer = await loadOffer(root);
+  if (!offer) {
+    throw new Error('content not found');
+  }
 
-  await client.loadAsync(offer, getSelector('/'));
+  let block: Uint8Array;
 
-  // check if we have the blocks already
-  const block = await blocks.get(root);
+  try {
+    // check if we have the blocks already
+    block = await blocks.get(root);
+  } catch (e) {
+    // otherwise we load it from the offer
+    await client.loadAsync(offer, getSelector('/'));
+    block = await blocks.get(root);
+  }
 
   let decode;
   switch (root.code) {
