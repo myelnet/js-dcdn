@@ -2,7 +2,14 @@ import Websockets from 'libp2p-websockets';
 import filters from 'libp2p-websockets/src/filters';
 import {Noise} from 'libp2p-noise/dist/src/noise';
 import Mplex from 'libp2p-mplex';
-import {Client, FilRPC, DealOffer, getSelector, Address} from 'myel-client';
+import {
+  Client,
+  FilRPC,
+  DealOffer,
+  getSelector,
+  Address,
+  EnvType,
+} from 'myel-client';
 import Libp2p from 'libp2p';
 import {CID} from 'multiformats';
 import {BN} from 'bn.js';
@@ -141,6 +148,7 @@ export async function handleRequest(request: Request): Promise<Response> {
     libp2p,
     blocks,
     rpc: new FilRPC('https://infura.myel.cloud'),
+    envType: EnvType.CloudflareWorker,
   });
 
   async function* cat(ipfsPath: string | CID, options = {}) {
