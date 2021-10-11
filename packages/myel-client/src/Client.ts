@@ -557,7 +557,8 @@ export class Client {
               }
             }
           )
-          .then(() => this.updateChannel(id, 'ALL_BLOCKS_RECEIVED'));
+          .then(() => this.updateChannel(id, 'ALL_BLOCKS_RECEIVED'))
+          .catch((err) => console.log('traversal', err));
       } else {
         const loader = this._loaders.get(id);
         if (loader) {
@@ -566,7 +567,7 @@ export class Client {
       }
     } catch (e) {
       // TODO
-      console.log(e);
+      console.log('processing block', e.message);
     }
   }
 
