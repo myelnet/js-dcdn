@@ -12,7 +12,8 @@ export class KVBlockstore extends BlockstoreAdapter {
   put(cid: CID, value: Uint8Array): Promise<void> {
     return this.kv.put(
       cidToKey(cid).toString(),
-      value.buffer.slice(value.byteOffset)
+      value.buffer.slice(value.byteOffset),
+      {expirationTtl: 86400} // keys expire after 24h
     );
   }
 
