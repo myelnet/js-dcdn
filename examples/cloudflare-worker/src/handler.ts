@@ -19,6 +19,7 @@ import {exporter} from 'ipfs-unixfs-exporter';
 import mime from 'mime/lite';
 import {KVBlockstore} from './kv-blockstore';
 import {Multiaddr} from 'multiaddr';
+// import {MemoryBlockstore} from 'interface-blockstore';
 
 declare const RECORDS: KVNamespace;
 declare const BLOCKS: KVNamespace;
@@ -83,7 +84,22 @@ function toReadableStream<T>(
   });
 }
 
-async function loadOffer(root: CID): Promise<DealOffer> {
+async function loadOffer(
+  root: CID,
+  params: URLSearchParams
+): Promise<DealOffer> {
+  const peer = params.get('peer');
+  if (peer !== null) {
+    return {
+      id: '1',
+      peerAddr: peer,
+      cid: root,
+      size: 0,
+      minPricePerByte: new BN(0),
+      maxPaymentInterval: 1 << 20,
+      maxPaymentIntervalIncrease: 1 << 20,
+    };
+  }
   const {keys} = await RECORDS.list({prefix: root.toString()});
   const results: DealOffer[] = [];
   let id = 1;
@@ -121,6 +137,9 @@ export async function handleRequest(request: Request): Promise<Response> {
     return fetch(request);
   }
   const url = new URL(request.url);
+  // a peer address may be passed as ?peer=dns4/mypeer.name/443...
+  const params = url.searchParams;
+
   const segments = toPathComponents(url.pathname);
 
   const root = CID.parse(segments[0]);
@@ -138,6 +157,11 @@ export async function handleRequest(request: Request): Promise<Response> {
           filter: filters.dnsWss,
         },
       },
+      // auto dial must be deactivated in this environment so we make sure to dial
+      // with the cloudflareWorker option
+      peerDiscovery: {
+        autoDial: false,
+      },
     },
   };
 
@@ -145,6 +169,7 @@ export async function handleRequest(request: Request): Promise<Response> {
   await libp2p.start();
 
   const blocks = new KVBlockstore(BLOCKS);
+  // const blocks = new MemoryBlockstore();
   const client = new Client({
     libp2p,
     blocks,
@@ -167,7 +192,7 @@ export async function handleRequest(request: Request): Promise<Response> {
     yield* file.content(options);
   }
 
-  const offer = await loadOffer(root);
+  const offer = await loadOffer(root, params);
   if (!offer) {
     throw new Error('content not found');
   }
@@ -176,6 +201,7 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   try {
     // check if we have the blocks already
+    // and immediately assign if so
     block = await blocks.get(root);
   } catch (e) {
     // otherwise we load it from the offer
@@ -206,7 +232,7 @@ export async function handleRequest(request: Request): Promise<Response> {
     const links = node.Links.map((l) => ({
       name: l.Name,
       size: l.Tsize,
-      cid: l.Hash,
+      cid: l.Hash.toString(),
     }));
     return new Response(JSON.stringify(links), {
       headers: {

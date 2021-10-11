@@ -10,11 +10,15 @@ export class KVBlockstore extends BlockstoreAdapter {
   }
 
   put(cid: CID, value: Uint8Array): Promise<void> {
-    return this.kv.put(cidToKey(cid).toString(), value.buffer);
+    return this.kv.put(
+      cidToKey(cid).toString(),
+      value.buffer.slice(value.byteOffset)
+    );
   }
 
   async get(cid: CID): Promise<Uint8Array> {
-    const buf = await this.kv.get(cidToKey(cid).toString(), {
+    const key = cidToKey(cid).toString();
+    const buf = await this.kv.get(key, {
       type: 'arrayBuffer',
     });
     if (!buf) {
