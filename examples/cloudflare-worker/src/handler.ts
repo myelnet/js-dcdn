@@ -63,25 +63,21 @@ function toReadableStream<T>(
   source: (AsyncIterable<T> & {return?: () => {}}) | AsyncGenerator<T, any, any>
 ): ReadableStream<T> {
   const iterator = source[Symbol.asyncIterator]();
-  return new ReadableStream({
-    async pull(controller: ReadableStreamDefaultController) {
-      try {
-        const chunk = await iterator.next();
-        if (chunk.done) {
-          controller.close();
-        } else {
-          controller.enqueue(chunk.value);
-        }
-      } catch (error) {
-        controller.error(error);
-      }
-    },
-    cancel(reason: any) {
-      if (source.return) {
-        source.return(reason);
-      }
-    },
-  });
+  const {readable, writable} = new TransformStream();
+  async function write() {
+    const writer = writable.getWriter();
+    let chunk = await iterator.next();
+
+    while (chunk.value !== null && !chunk.done) {
+      writer.write(chunk.value);
+      chunk = await iterator.next();
+    }
+    writer.close();
+  }
+  // no await since we want to return the reader and start consuming while
+  // we're still writing
+  write();
+  return readable;
 }
 
 async function loadOffer(
@@ -237,7 +233,7 @@ export async function handleRequest(request: Request): Promise<Response> {
     return new Response(JSON.stringify(links), {
       headers: {
         ...corsHeaders,
-        'content-type': 'application/json',
+        'Content-Type': 'application/json',
       },
     });
   }
@@ -258,13 +254,15 @@ export async function handleRequest(request: Request): Promise<Response> {
       const headers: {[key: string]: any} = corsHeaders;
       const extension = key.split('.').pop() as string;
       if (extension && mime.getType(extension)) {
-        headers['content-type'] = mime.getType(extension);
+        headers['Content-Type'] = mime.getType(extension);
       }
+      // used to trigger a download instead of opening a web page
+      headers['Content-Disposition'] = 'attachment; filename="' + key + '"';
       return new Response(body, {
         status: 200,
         headers,
       });
     }
   }
-  return new Response('bad request');
+  return new Response('not found');
 }
