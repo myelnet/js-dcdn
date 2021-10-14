@@ -12,6 +12,7 @@ import {Blockstore, MemoryBlockstore} from 'interface-blockstore';
 import {Client, DealOffer} from './Client';
 import {getSelector} from './selectors';
 import {FilRPC} from './FilRPC';
+import {ChannelState} from './fsm';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -122,9 +123,11 @@ export class PreloadController {
 
       for (const [cid, entry] of this._cidToContentEntry) {
         const root = CID.parse(cid);
+        const offer = await this.offerFromEntry(root, entry);
         await this._client.loadAsync(
-          await this.offerFromEntry(root, entry),
-          getSelector(entry.selector)
+          offer,
+          getSelector(entry.selector),
+          (state: ChannelState) => state.matches('completed')
         );
       }
       return self.skipWaiting();

@@ -445,6 +445,9 @@ export class Client {
         callback(null, state);
       }
     });
+    ch.subscribe((state) => {
+      console.log('==>', state.value);
+    });
     ch.start();
     this._channels.set(chid, ch);
     return chid;
@@ -586,8 +589,8 @@ export class Client {
         funds,
         context.initialChannelAddr
       );
-      console.log('loaded channel', chAddr.toString());
       const lane = this.paychMgr.allocateLane(chAddr);
+      console.log('loaded channel', chAddr.toString(), 'with lane', lane);
       this.updateChannel(id, {
         type: 'PAYCH_READY',
         paymentInfo: {
@@ -860,16 +863,19 @@ export class Client {
   }
 
   /**
-   * loadAsync returns a promise that will get resolved once the transfer is completed of fails
+   * loadAsync returns a promise that will get resolved once all the blocks have been received
    */
-  loadAsync(offer: DealOffer, selector: SelectorNode): Promise<ChannelState> {
+  loadAsync(
+    offer: DealOffer,
+    selector: SelectorNode,
+    done = (state: ChannelState) => state.context.allReceived
+  ): Promise<ChannelState> {
     return new Promise((resolve, reject) => {
       function callback(err: Error | null, state: ChannelState) {
         if (err) {
           return reject(err);
         }
-        console.log('==>', state.value);
-        if (state.matches('completed')) {
+        if (done(state)) {
           return resolve(state);
         }
         // TODO: maybe timeout or recover is something goes wrong?

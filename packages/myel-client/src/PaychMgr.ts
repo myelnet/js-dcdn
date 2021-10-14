@@ -587,6 +587,7 @@ export class PayCh {
         redeemed: new BN(v[0]),
         nonce: v[1],
       });
+      if (idx >= this._nextLane) this._nextLane = idx + 1n;
     }
 
     this._state = new PayChState(
@@ -625,7 +626,9 @@ export class PayCh {
       return this._blocks[key];
     }
     const data = await this.filRPC.send('ChainReadObj', [{'/': key}]);
-    return Buffer.from(data, 'base64');
+
+    const buf = Buffer.from(data, 'base64');
+    return buf;
   }
 }
 
@@ -648,12 +651,14 @@ export class PaychMgr {
     amt: BigInt,
     addr?: Address
   ): Promise<Address> {
+    // check if the channel is already loaded in our cache
     const existing = this._chByFromTo.get(this._channelCacheKey(from, to));
     if (existing || addr) {
       let channel: PayCh | undefined = undefined;
       if (existing) {
         channel = this._channels.get(existing);
       } else if (addr) {
+        // if not cached but we know the address we can load it from the chain
         channel = new PayCh(
           from,
           to,
