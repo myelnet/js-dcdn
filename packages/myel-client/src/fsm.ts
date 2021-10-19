@@ -180,6 +180,14 @@ export function createChannel(
                 }),
               },
               PAYMENT_FAILED: 'failure',
+              BLOCK_RECEIVED: {
+                target: 'sendPayment',
+                actions: receiveBlock,
+              },
+              ALL_BLOCKS_RECEIVED: {
+                target: 'sendPayment',
+                actions: receiveAllBlocks,
+              },
             },
           },
           // In the ongoing state we don't need to do anything, just wait for the next event to unfold.

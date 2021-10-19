@@ -112,4 +112,23 @@ describe('amt', () => {
     }
     expect(i).toBe(8);
   });
+
+  test('one lane', async () => {
+    const root = CID.parse(
+      'bafy2bzacecgrc3fdxb227cvq4gppwctyypuw3j2upj2u2xvhpc3mhyfa7ao6u'
+    );
+
+    const blocks = createBlockstore();
+    blocks.setBase64(root.toString(), 'hAMAAYNBEICBgkMABfAB');
+    const amt = await AMT.load<CompactLaneState>(root, blocks);
+
+    const lanes = [4n];
+
+    let i = 0;
+    for await (const [idx, v] of amt.entries()) {
+      expect(idx).toBe(lanes[i]);
+      i++;
+    }
+    expect(i).toBe(1);
+  });
 });

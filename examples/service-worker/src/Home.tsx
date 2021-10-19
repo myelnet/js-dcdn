@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {Profiler, useState} from 'react';
+import {useState} from 'react';
 import styles from './Home.module.css';
 import {useStore} from './store';
 
@@ -14,11 +14,7 @@ const Frogs = () => {
   return (
     <div className={styles.grid}>
       <div className={styles.card}>
-        <Profiler
-          id="blue-frog"
-          onRender={(...data) => console.log('profiler', data)}>
-          <Image name="blue-frog.jpg" root={root} />
-        </Profiler>
+        <Image name="blue-frog.jpg" root={root} />
       </div>
       <div className={styles.card}>
         <Image name="green-frog.jpg" root={root} />
@@ -85,7 +81,6 @@ export default function Home() {
 
         {cached && (
           <>
-            <FrogsFromGateway />
             <Frogs />
           </>
         )}

@@ -39,9 +39,9 @@ const setup = (self: ServiceWorkerGlobalScope) => {
       selector: '/',
       peerAddr:
         // '/dns4/ohio.myel.zone/tcp/443/wss/p2p/12D3KooWStJfAywQmfaVFQDQYr9riDnEFG3VJ3qDGcTidvc4nQtc',
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWEUerPGoVkz2eg6C9FZzwXZKF2SiVye3rtfXCLUjmR8ZQ',
-      size: 5000000,
-      pricePerByte: 0,
+        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWH8zmfTpCvTuLi1VinFa8GnunnmAuswgEgWkEefPDsGGd',
+      size: 4500000,
+      pricePerByte: 1,
       paymentAddress: decodeAddress(
         'f13t4qv2lvlwowq67d2txl7auiddhlppca3nw5yxa'
       ),
