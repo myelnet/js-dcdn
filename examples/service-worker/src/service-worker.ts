@@ -35,12 +35,12 @@ const setup = (self: ServiceWorkerGlobalScope) => {
 
   controller.preload([
     {
-      root: 'bafyreiaemos3x3k5fmycs64ry3otobineo4wdz73ccrqxrlzt7gmtzhbmm',
+      root: 'bafyreihln6fhimxmuzu7nmqyhld5l64qub3xasfdrtccjnq6lxbhmmt2oi',
       selector: '/',
       peerAddr:
         // '/dns4/ohio.myel.zone/tcp/443/wss/p2p/12D3KooWStJfAywQmfaVFQDQYr9riDnEFG3VJ3qDGcTidvc4nQtc',
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWH8zmfTpCvTuLi1VinFa8GnunnmAuswgEgWkEefPDsGGd',
-      size: 4500000,
+        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWKfBA6zPhkNFVnr5U83Ej6kh7C8gHGVcpBrENLJfWYckU',
+      size: 6500,
       pricePerByte: 1,
       paymentAddress: decodeAddress(
         'f13t4qv2lvlwowq67d2txl7auiddhlppca3nw5yxa'

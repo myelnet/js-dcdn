@@ -589,7 +589,8 @@ export class Client {
         funds,
         context.initialChannelAddr
       );
-      const lane = this.paychMgr.allocateLane(chAddr);
+      // will allocate a new lane if the channel was just created or loaded from chain
+      const lane = this.paychMgr.getLane(chAddr);
       console.log('loaded channel', chAddr.toString(), 'with lane', lane);
       this.updateChannel(id, {
         type: 'PAYCH_READY',
@@ -615,7 +616,7 @@ export class Client {
       // The next amount should be for all bytes received
       this.updateChannel(id, {
         type: 'PAYMENT_AUTHORIZED',
-        amt: owed.add(context.fundsSpent),
+        amt: owed, // the paychMgr will take care of incrementing amount based on previous vouchers
       });
     }
   }
