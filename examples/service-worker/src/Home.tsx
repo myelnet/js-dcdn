@@ -81,7 +81,7 @@ export default function Home() {
 
         {cached && (
           <>
-            <Frogs />
+            <Icons />
           </>
         )}
       </main>

@@ -117,8 +117,8 @@ describe('paych', () => {
     const vouch1 = await mgr.createVoucher(ch, new BN(10), 1n);
     expect(vouch1.shortfall.isZero()).toBe(true);
 
-    // create a new voucher exceeding the balance
-    const vouch1a = await mgr.createVoucher(ch, new BN(12), 1n);
+    // create a new voucher exceeding the balance (mgr will add with previous voucher)
+    const vouch1a = await mgr.createVoucher(ch, new BN(2), 1n);
     expect(vouch1a.shortfall.eq(new BN(2))).toBe(true);
 
     // create a new voucher exceeding the balance on a different lane

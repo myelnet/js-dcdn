@@ -386,6 +386,7 @@ export class PayCh {
   from: Address;
   to: Address;
   addr?: Address;
+  lane?: bigint; // current lane to be reused between multiple transfers in a session
 
   filRPC: RPCProvider;
   signer: Signer;
@@ -469,9 +470,9 @@ export class PayCh {
   }
 
   allocateLane(): bigint {
-    const lane = this._nextLane;
+    this.lane = this._nextLane;
     this._nextLane++;
-    return lane;
+    return this.lane;
   }
 
   // given a voucher, populate the channel address, nonce and signature then check
@@ -479,6 +480,11 @@ export class PayCh {
   async createVoucher(voucher: FilecoinVoucher): Promise<VoucherCreateResult> {
     voucher.channelAddr = this.addr;
     voucher.nonce = this._nextNonceForLane(voucher.lane);
+    // voucher amounts should always be incremented unless the amount is negative
+    // in which case the provider must be ok with it (i.e. for a refund)
+    voucher.amount = voucher.amount.add(
+      this._totalRedeemedForLane(voucher.lane)
+    );
 
     const vbytes = voucher.toBytes(true);
     // right now channels are controlled by whoever is the sender
@@ -527,6 +533,7 @@ export class PayCh {
     return laneStates;
   }
 
+  // calculate how much has been spent across all lanes
   _totalRedeemed(): BigInt {
     let total = new BN(0);
     for (const [lane, state] of this._laneStates().entries()) {
@@ -535,6 +542,7 @@ export class PayCh {
     return total;
   }
 
+  // calculate how much has been spend across all lanes including a given voucher
   _totalRedeemedWithVoucher(voucher: FilecoinVoucher): BigInt {
     const laneStates = this._laneStates();
     let total = new BN(0);
@@ -555,6 +563,16 @@ export class PayCh {
       total = total.add(voucher.amount);
     }
     return total;
+  }
+
+  // calculate how much has been spent on a given lane
+  _totalRedeemedForLane(lane: bigint): BigInt {
+    const state = this._laneStates().get(lane);
+    if (state) {
+      return state.redeemed;
+    }
+    // if this is our first voucher for this lane it will be 0
+    return new BN(0);
   }
 
   _nextNonceForLane(lane: bigint): number {
@@ -604,9 +622,9 @@ export class PayCh {
     const balance = this._state ? this._state.balance : new BN(0);
     const redeemed = this._totalRedeemed();
     return {
-      confirmedAmt: balance,
-      redeemedAmt: redeemed,
-      spendableAmt: balance.sub(redeemed),
+      confirmedAmt: balance, // amount confirmed on chain
+      redeemedAmt: redeemed, // amount we know we spent
+      spendableAmt: balance.sub(redeemed), // how much we can still spend
     };
   }
 
@@ -619,6 +637,7 @@ export class PayCh {
     }
   }
 
+  // getBlock sends request for a Filecoin block to the RPC
   async getBlock(cid: CID): Promise<Uint8Array> {
     const key = cid.toString();
     // TODO: use a persistent blockstore so we don't need to refetch when reloading the page
@@ -713,6 +732,17 @@ export class PaychMgr {
     return channel.allocateLane();
   }
 
+  getLane(ch: Address): bigint {
+    const channel = this._channels.get(ch);
+    if (!channel) {
+      throw new ErrChannelNotFound(ch.toString());
+    }
+    if (!channel.lane) {
+      return channel.allocateLane();
+    }
+    return channel.lane;
+  }
+
   async channelAvailableFunds(ch: Address): Promise<PayChAvailableFunds> {
     const channel = this._channels.get(ch);
     if (!channel) {
@@ -723,7 +753,7 @@ export class PaychMgr {
 
   async createVoucher(
     ch: Address,
-    amt: BigInt,
+    amt: BigInt, // temporary amount, needs to be added to the current redeemed amount for the lane
     lane: bigint
   ): Promise<VoucherCreateResult> {
     const channel = this._channels.get(ch);
