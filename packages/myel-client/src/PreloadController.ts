@@ -1,5 +1,4 @@
 import {CID} from 'multiformats';
-import {decode as decodePb} from '@ipld/dag-pb';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {exporter} from 'ipfs-unixfs-exporter';
 import mime from 'mime/lite';
@@ -9,10 +8,13 @@ import {BN} from 'bn.js';
 import {Address} from './filaddress';
 import {Multiaddr} from 'multiaddr';
 import {Blockstore, MemoryBlockstore} from 'interface-blockstore';
+import {Datastore} from 'interface-Datastore';
 import {Client, DealOffer} from './Client';
-import {getSelector} from './selectors';
+import {getSelector, entriesSelector, decoderFor} from './selectors';
 import {FilRPC} from './FilRPC';
 import {ChannelState} from './fsm';
+import {decodeFilAddress} from './filaddress';
+import {BlockstoreAdapter} from './BlockstoreAdapter';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -21,6 +23,7 @@ type ControllerOptions = {
   routingUrl?: string;
   privateKey?: string;
   blocks?: Blockstore;
+  datastore?: Datastore;
 };
 
 type ContentEntry = {
@@ -84,14 +87,12 @@ export class PreloadController {
       self.addEventListener('activate', this.activate);
       self.addEventListener('fetch', ((event: FetchEvent) => {
         const url = new URL(event.request.url);
-        try {
-          const response = this.match(url.pathname);
-          if (response) {
-            event.respondWith(response);
-          }
-        } catch (e) {
-          console.log(e);
-        }
+        event.respondWith(
+          this.match(url.pathname).catch((err) => {
+            console.log(err);
+            return fetch(event.request);
+          })
+        );
       }) as EventListener);
       this._installAndActiveListenersAdded = true;
     }
@@ -105,7 +106,14 @@ export class PreloadController {
 
   install(event: ExtendableEvent): Promise<void> {
     const promise = (async () => {
-      const blocks = this._options.blocks ?? new MemoryBlockstore();
+      let blocks: Blockstore = new MemoryBlockstore();
+      if (this._options.datastore) {
+        const ds = this._options.datastore;
+        await ds.open();
+        blocks = new BlockstoreAdapter(ds);
+      } else if (this._options.blocks) {
+        blocks = this._options.blocks;
+      }
 
       const libp2p = await Libp2p.create(this._options);
       await libp2p.start();
@@ -145,35 +153,41 @@ export class PreloadController {
     return promise;
   }
 
-  match(url: string): Promise<Response> | undefined {
+  async match(url: string): Promise<Response> {
     const segs = toPathComponents(url);
-    const offer = this._cidToContentEntry.get(segs[0]);
-    if (!offer) {
-      return;
-    }
     console.log(url);
     const root = CID.parse(segs[0]);
+    // load an offer. throws if none can be found
+    const offer = await this.getOffer(root);
 
-    return this.handleRequest(root, segs.pop() || '');
+    return this.handleRequest(root, segs.pop() || '', offer);
   }
 
-  async handleRequest(root: CID, key: string): Promise<Response> {
+  async handleRequest(
+    root: CID,
+    key: string,
+    offer: DealOffer
+  ): Promise<Response> {
     if (!this._client) {
       throw new Error('client is not initialized');
     }
     // check if we have the blocks already
-    const block = await this._client.blocks.get(root);
+    let block;
+    try {
+      block = await this._client.blocks.get(root);
+    } catch (e) {
+      // else load the entries
+      await this._client.loadAsync(
+        offer,
+        entriesSelector,
+        (state: ChannelState) => state.matches('completed')
+      );
+      return this.handleRequest(root, key, offer);
+    }
 
-    let decode;
-    switch (root.code) {
-      case 0x70:
-        decode = decodePb;
-        break;
-      case 0x71:
-        decode = decodeCbor;
-        break;
-      default:
-        throw new Error('unsuported codec');
+    const decode = decoderFor(root);
+    if (!decode) {
+      return new Response(block);
     }
 
     const node = decode(block);
@@ -182,20 +196,7 @@ export class PreloadController {
       if (key === link.Name) {
         const has = await this._client.blocks.has(link.Hash);
         if (!has) {
-          const entry = this._cidToContentEntry.get(root.toString());
-          if (!entry) {
-            throw new Error(
-              'no content entry for: ' + root.toString() + '/' + key
-            );
-          }
-          if (link.Tsize) {
-            console.log(link.Name, link.Hash.toString());
-            entry.size = link.Tsize;
-          }
-          await this._client.loadAsync(
-            await this.offerFromEntry(link.Hash, entry),
-            getSelector('*')
-          );
+          await this._client.loadAsync(offer, getSelector('*'));
         }
         const content = this.cat(link.Hash);
         const body = toReadableStream(content);
@@ -230,36 +231,44 @@ export class PreloadController {
     yield* file.content(options);
   }
 
-  async offerFromEntry(root: CID, entry: ContentEntry): Promise<DealOffer> {
-    if (this._options.routingUrl) {
-      const key = root.toString();
-      // check if we already have records
-      const recs = this._cidToRecords.get(key);
-      if (recs) {
-        return recs[0];
-      }
-      const raw = await fetch(this._options.routingUrl + '/' + key).then(
-        (resp) => resp.arrayBuffer()
-      );
-      const deferred: Uint8Array[] = decodeCbor(new Uint8Array(raw));
-      const records: DealOffer[] = deferred.map((def, i) => {
-        const rec: any[] = decodeCbor(def);
-        const maddr = new Multiaddr(rec[0]);
-        // id is used to keep track of the order of relevance
-        return {
-          id: String(i),
-          peerAddr: maddr.toString(),
-          cid: root,
-          size: rec[2],
-          minPricePerByte: new BN(entry.pricePerByte),
-          maxPaymentInterval: 1 << 20,
-          maxPaymentIntervalIncrease: 1 << 20,
-          paymentAddress: new Address(rec[1]),
-        };
-      });
-      this._cidToRecords.set(key, records);
-      return records[0];
+  async getOffer(root: CID): Promise<DealOffer> {
+    const key = root.toString();
+    // check if we already have records:
+    // content entry are statically loaded
+    const entry = this._cidToContentEntry.get(key);
+    if (entry) {
+      return this.offerFromEntry(root, entry);
     }
+    // records are cached from a previous request
+    const recs = this._cidToRecords.get(key);
+    if (recs) {
+      return recs[0];
+    }
+    // fetch a routing file can be from a local or remote endpoint
+    const raw = await fetch(this._options.routingUrl + '/' + key).then((resp) =>
+      resp.arrayBuffer()
+    );
+    const deferred: Uint8Array[] = decodeCbor(new Uint8Array(raw));
+    const records: DealOffer[] = deferred.map((def, i) => {
+      const rec: any[] = decodeCbor(def);
+      const maddr = new Multiaddr(rec[0]);
+      // id is used to keep track of the order of relevance
+      return {
+        id: String(i),
+        peerAddr: maddr.toString(),
+        cid: root,
+        size: rec[2],
+        minPricePerByte: new BN(0), // TODO: records do not include pricing at the moment
+        maxPaymentInterval: 1 << 20,
+        maxPaymentIntervalIncrease: 1 << 20,
+        paymentAddress: new Address(rec[1]),
+      };
+    });
+    this._cidToRecords.set(key, records);
+    return records[0];
+  }
+
+  offerFromEntry(root: CID, entry: ContentEntry): DealOffer {
     return {
       id: '1',
       peerAddr: entry.peerAddr,
