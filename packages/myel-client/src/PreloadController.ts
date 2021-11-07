@@ -1,6 +1,8 @@
 import {CID} from 'multiformats';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
+import {PBLink} from '@ipld/dag-pb';
 import {exporter} from 'ipfs-unixfs-exporter';
+import {UnixFS} from 'ipfs-unixfs';
 import mime from 'mime/lite';
 import Libp2p, {Libp2pOptions} from 'libp2p';
 import BigInt from 'bn.js';
@@ -10,11 +12,17 @@ import {Multiaddr} from 'multiaddr';
 import {Blockstore, MemoryBlockstore} from 'interface-blockstore';
 import {Datastore} from 'interface-Datastore';
 import {Client, DealOffer} from './Client';
-import {getSelector, entriesSelector, decoderFor} from './selectors';
+import {
+  getSelector,
+  entriesSelector,
+  allSelector,
+  decoderFor,
+} from './selectors';
 import {FilRPC} from './FilRPC';
 import {ChannelState} from './fsm';
 import {decodeFilAddress} from './filaddress';
 import {BlockstoreAdapter} from './BlockstoreAdapter';
+import {detectContentType} from './mimesniff';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -160,13 +168,15 @@ export class PreloadController {
     // load an offer. throws if none can be found
     const offer = await this.getOffer(root);
 
-    return this.handleRequest(root, segs.pop() || '', offer);
+    const key = segs.length > 1 ? segs.pop() : undefined;
+
+    return this.handleRequest(offer, root, key);
   }
 
   async handleRequest(
+    offer: DealOffer,
     root: CID,
-    key: string,
-    offer: DealOffer
+    key?: string
   ): Promise<Response> {
     if (!this._client) {
       throw new Error('client is not initialized');
@@ -179,10 +189,10 @@ export class PreloadController {
       // else load the entries
       await this._client.loadAsync(
         offer,
-        entriesSelector,
+        key ? entriesSelector : allSelector,
         (state: ChannelState) => state.matches('completed')
       );
-      return this.handleRequest(root, key, offer);
+      return this.handleRequest(offer, root, key);
     }
 
     const decode = decoderFor(root);
@@ -191,6 +201,33 @@ export class PreloadController {
     }
 
     const node = decode(block);
+
+    try {
+      const unixfs = UnixFS.unmarshal(node.Data);
+      if (!unixfs.isDirectory()) {
+        return this.streamResponse(root);
+      }
+    } catch (err) {
+      // non-UnixFS dag-pb node. we can keep trying just in case
+      console.log(err);
+    }
+
+    // If it's a directory and no keys are specified, return all entries in JSON
+    if (!key) {
+      const entries: {name: string; hash: string; size: number}[] =
+        node.Links.map((l: PBLink) => ({
+          name: l.Name,
+          hash: l.Hash.toString(),
+          size: l.Tsize,
+        }));
+      return new Response(JSON.stringify(entries, null, '\t'), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+    }
+
     // for now we assume our node is a unixfs directory
     for (const link of node.Links) {
       if (key === link.Name) {
@@ -198,21 +235,35 @@ export class PreloadController {
         if (!has) {
           await this._client.loadAsync(offer, getSelector('*'));
         }
-        const content = this.cat(link.Hash);
-        const body = toReadableStream(content);
-        const headers: {[key: string]: any} = {};
-        const extension = key.split('.').pop() as string;
-        if (extension && mime.getType(extension)) {
-          headers['content-type'] = mime.getType(extension);
-        }
-
-        return new Response(body, {
-          status: 200,
-          headers,
-        });
+        return this.streamResponse(link.Hash, key);
       }
     }
     throw new Error('key not found');
+  }
+
+  async streamResponse(cid: CID, key?: string): Promise<Response> {
+    const content = this.cat(cid);
+    let body = toReadableStream(content);
+    const headers: {[key: string]: any} = {};
+    if (key) {
+      const extension = key.split('.').pop() as string;
+      if (extension && mime.getType(extension)) {
+        headers['content-type'] = mime.getType(extension);
+      }
+    }
+    if (!headers['content-type']) {
+      const [peek, out] = body.tee();
+      const reader = peek.getReader();
+      const {value, done} = await reader.read();
+      // TODO: this may not work if the first chunk is < 512bytes.
+
+      headers['content-type'] = detectContentType(value);
+      body = out;
+    }
+    return new Response(body, {
+      status: 200,
+      headers,
+    });
   }
 
   // do not use before the service worker is fully installed

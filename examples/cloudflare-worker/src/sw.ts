@@ -18,7 +18,7 @@ const controller = new PreloadController({
       },
     },
   },
-  routingUrl: '',
+  routingUrl: '/routing',
   // datastore: new IdbStore('/myel-client/blocks'),
 });
 controller.preload([]);
