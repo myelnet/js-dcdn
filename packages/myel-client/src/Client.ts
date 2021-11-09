@@ -1,4 +1,5 @@
 import {EventEmitter, HandlerProps, Connection, MuxedStream} from 'libp2p';
+import getPeer from 'libp2p/src/get-peer';
 import {pipe} from 'it-pipe';
 import lp from 'it-length-prefixed';
 import {decode, encode} from '@ipld/dag-cbor';
@@ -60,19 +61,30 @@ const blake2b256 = hasherFrom({
   encode: (input) => bytes.coerce(blakejs.blake2b(input, undefined, 32)),
 });
 
+// Declare all libp2p minimum interfaces here
+// we could just import them but I like to specify what's actually used by the client
+
 interface AddressBook {
-  set: (pid: PeerId, addrs: Multiaddr[]) => any;
+  add: (pid: PeerId, addrs: Multiaddr[]) => AddressBook;
 }
 
 interface PeerStore {
   addressBook: AddressBook;
 }
 
+interface ConnManager extends EventEmitter {
+  get: (peerId: PeerId) => Connection | null;
+}
+
 interface P2P {
   peerId: PeerId;
-  connectionManager: EventEmitter;
+  connectionManager: ConnManager;
   peerStore: PeerStore;
   handle: (protocol: string, handler: (props: HandlerProps) => void) => void;
+  dial: (
+    peer: PeerId | Multiaddr | string,
+    options?: any
+  ) => Promise<Connection>;
   dialProtocol: (
     peer: PeerId,
     protocols: string[] | string,
@@ -847,13 +859,10 @@ export class Client {
         }
       }
     }
-    const addr = multiaddr(offer.peerAddr);
-    const pidStr = addr.getPeerId();
-    if (!pidStr) {
-      throw new Error('invalid peer ID');
+    const {id: from, multiaddrs} = getPeer(offer.peerAddr);
+    if (multiaddrs) {
+      this.libp2p.peerStore.addressBook.add(from, multiaddrs);
     }
-    const from = PeerId.createFromB58String(pidStr);
-    this.libp2p.peerStore.addressBook.set(from, [addr]);
 
     const req = this._newRequest(offer, selector, from);
 
