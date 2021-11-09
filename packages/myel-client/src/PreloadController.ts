@@ -79,6 +79,7 @@ export class PreloadController {
   private _installAndActiveListenersAdded?: boolean;
   private readonly _cidToContentEntry: Map<string, ContentEntry> = new Map();
   private readonly _cidToRecords: Map<string, DealOffer[]> = new Map();
+  private readonly _dialDurations: Map<string, number> = new Map();
   private readonly _options: Libp2pOptions & ControllerOptions;
 
   constructor(options: Libp2pOptions & ControllerOptions) {
@@ -168,6 +169,9 @@ export class PreloadController {
     // load an offer. throws if none can be found
     const offer = await this.getOffer(root);
 
+    // log if we have an existing connection with the peer before the transfer
+    this._setDialDuration(offer.peerAddr);
+
     const key = segs.length > 1 ? segs.pop() : undefined;
 
     return this.handleRequest(offer, root, key);
@@ -205,7 +209,7 @@ export class PreloadController {
     try {
       const unixfs = UnixFS.unmarshal(node.Data);
       if (!unixfs.isDirectory()) {
-        return this.streamResponse(root);
+        return this.streamResponse(root, offer);
       }
     } catch (err) {
       // non-UnixFS dag-pb node. we can keep trying just in case
@@ -235,16 +239,20 @@ export class PreloadController {
         if (!has) {
           await this._client.loadAsync(offer, getSelector('*'));
         }
-        return this.streamResponse(link.Hash, key);
+        return this.streamResponse(link.Hash, offer, key);
       }
     }
     throw new Error('key not found');
   }
 
-  async streamResponse(cid: CID, key?: string): Promise<Response> {
+  async streamResponse(
+    cid: CID,
+    offer: DealOffer,
+    key?: string
+  ): Promise<Response> {
     const content = this.cat(cid);
     let body = toReadableStream(content);
-    const headers: {[key: string]: any} = {};
+    const headers = this._metaHeaders(offer);
     if (key) {
       const extension = key.split('.').pop() as string;
       if (extension && mime.getType(extension)) {
@@ -330,6 +338,25 @@ export class PreloadController {
       maxPaymentIntervalIncrease: 1 << 20,
       paymentAddress: entry.paymentAddress,
       paymentChannel: entry.paymentChannel,
+    };
+  }
+
+  async _setDialDuration(addr: string) {
+    if (!this._client) {
+      throw new Error('client is not initialized');
+    }
+    const start = performance.now();
+    await this._client.libp2p.dial(addr);
+    const end = performance.now();
+
+    this._dialDurations.set(addr, end - start);
+  }
+
+  _metaHeaders(offer: DealOffer): {[key: string]: any} {
+    const dur = this._dialDurations.get(offer.peerAddr) ?? 0;
+    const serverTiming = 'dial;dur=' + dur.toFixed(2);
+    return {
+      'Server-Timing': serverTiming,
     };
   }
 }
