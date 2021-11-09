@@ -38,6 +38,7 @@ import {
   traversal,
   AsyncLoader,
   parseContext,
+  selEquals,
 } from './selectors';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
@@ -313,6 +314,8 @@ export class Client {
   private readonly _chanByGsReq: Map<number, ChannelID> = new Map();
   // keeps track of channels for a given transfer ID
   private readonly _chanByDtReq: Map<number, ChannelID> = new Map();
+  // keeps track of channels by CID to avoid duplicating work
+  private readonly _chanByCID: Map<string, ChannelID> = new Map();
   // hashers used by the blockstore to verify the incoming blocks. Currently hard coded but may be customizable.
   private readonly _hashers: {[key: number]: hasher.MultihashHasher} = {
     [blake2b256.code]: blake2b256,
@@ -819,6 +822,31 @@ export class Client {
     cb: (err: Error | null, state: ChannelState) => void = () => {}
   ): ChannelID {
     const root = offer.cid;
+    const key = root.toString();
+    // check if there is any ongoing transfer for this root
+    // with the same selector
+    const ochid = this._chanByCID.get(key);
+    if (ochid) {
+      const ch = this._channels.get(ochid);
+      if (ch) {
+        const ctx = ch.state.context;
+        const same = selEquals(ctx.selector, selector);
+        if (same) {
+          if (ctx.allReceived) {
+            cb(null, ch.state);
+          } else {
+            ch.subscribe((state) => {
+              if (state.matches('failure')) {
+                cb(new Error(state.context.error), state);
+              } else {
+                cb(null, state);
+              }
+            });
+          }
+          return ochid;
+        }
+      }
+    }
     const addr = multiaddr(offer.peerAddr);
     const pidStr = addr.getPeerId();
     if (!pidStr) {
@@ -842,6 +870,7 @@ export class Client {
     const gsReqId = this._gsReqId++;
     this._chanByGsReq.set(gsReqId, chid);
     this._chanByDtReq.set(req.XferID, chid);
+    this._chanByCID.set(key, chid);
 
     this._sendGraphsyncMsg(from, {
       requests: [
