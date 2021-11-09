@@ -72,13 +72,9 @@ interface PeerStore {
   addressBook: AddressBook;
 }
 
-interface ConnManager extends EventEmitter {
-  get: (peerId: PeerId) => Connection | null;
-}
-
 interface P2P {
   peerId: PeerId;
-  connectionManager: ConnManager;
+  connectionManager: EventEmitter;
   peerStore: PeerStore;
   handle: (protocol: string, handler: (props: HandlerProps) => void) => void;
   dial: (
