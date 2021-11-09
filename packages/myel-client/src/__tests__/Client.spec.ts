@@ -55,6 +55,8 @@ describe('MyelClient', () => {
 
     const state = await Promise.all([
       client.loadAsync(offer, allSelector),
+      // test deduplication
+      client.loadAsync(offer, allSelector),
       // here the order is crucial
       client
         ._handleGraphsyncMsg(ppid, fix.gsMsg1)
@@ -65,6 +67,8 @@ describe('MyelClient', () => {
     expect(state[0].matches('completed')).toBe(true);
     expect(state[0].context.received).toBe(1214);
     expect(state[0].context.allReceived).toBe(true);
+
+    expect(state[1].matches('completed')).toBe(true);
   });
 
   test('handles a one block transfer', async () => {

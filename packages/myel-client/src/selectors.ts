@@ -1,7 +1,8 @@
 import {CID} from 'multiformats';
 import {decode as decodePb} from '@ipld/dag-pb';
-import {decode as decodeCbor} from '@ipld/dag-cbor';
+import {decode as decodeCbor, encode as encodeCbor} from '@ipld/dag-cbor';
 import {Blockstore} from 'interface-blockstore';
+import {equals} from './filaddress';
 
 enum Kind {
   Invalid = '',
@@ -68,6 +69,10 @@ function is(value: any): Kind {
     return Kind.Link;
   }
   return Kind.Invalid;
+}
+
+export function selEquals(a: SelectorNode, b: SelectorNode): boolean {
+  return equals(encodeCbor(a), encodeCbor(b));
 }
 
 class Node {
