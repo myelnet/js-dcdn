@@ -307,7 +307,7 @@ export function checkAddressString(address: string) {
   }
 }
 
-function concat(arrays: Array<ArrayLike<number>>, length?: number) {
+export function concat(arrays: Array<ArrayLike<number>>, length?: number) {
   if (!length) {
     length = arrays.reduce((acc, curr) => acc + curr.length, 0);
   }

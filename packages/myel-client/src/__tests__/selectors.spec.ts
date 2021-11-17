@@ -7,6 +7,8 @@ import {
   LinkSystem,
   AsyncLoader,
   traversal,
+  walk,
+  Node,
 } from '../selectors';
 import {CID} from 'multiformats';
 import {encode} from 'multiformats/block';
@@ -525,9 +527,7 @@ describe('selectors', () => {
             // @ts-ignore
             expect(node).toEqual(parent.value.children[0]);
 
-            bs.put(leaf1.cid, leaf1.bytes).then(() =>
-              loader.publish(leaf1.cid)
-            );
+            bs.put(leaf1.cid, leaf1.bytes).then(() => loader.push(leaf1));
             break;
           case 3:
             expect(node).toEqual(leaf1.value);
@@ -543,9 +543,7 @@ describe('selectors', () => {
           case 6:
             // @ts-ignore
             expect(node).toEqual(parent.value.children[1]);
-            bs.put(leaf2.cid, leaf2.bytes).then(() =>
-              loader.publish(leaf2.cid)
-            );
+            bs.put(leaf2.cid, leaf2.bytes).then(() => loader.push(leaf2));
             break;
           case 7:
             expect(node).toEqual(leaf2.value);
@@ -570,5 +568,102 @@ describe('selectors', () => {
     );
 
     expect(order).toBe(11);
+  });
+
+  test('walk', async () => {
+    const blocks = new MemoryBlockstore();
+    const leaf1 = await encode({
+      value: {
+        name: 'leaf1',
+        size: 12,
+      },
+      hasher: sha256,
+      codec: dagCBOR,
+    });
+    const leaf2 = await encode({
+      value: {
+        name: 'leaf2',
+        size: 12,
+      },
+      hasher: sha256,
+      codec: dagCBOR,
+    });
+    const parent = await encode({
+      value: {
+        children: [leaf1.cid, leaf2.cid],
+        favouriteChild: leaf2.cid,
+        name: 'parent',
+      },
+      hasher: sha256,
+      codec: dagCBOR,
+    });
+    const lister = await encode({
+      value: [parent.cid, leaf1.cid, leaf2.cid],
+      hasher: sha256,
+      codec: dagCBOR,
+    });
+    const grandparent = await encode({
+      value: [
+        {name: 'parent', link: parent.cid},
+        {name: 'lister', link: lister.cid},
+      ],
+      hasher: sha256,
+      codec: dagCBOR,
+    });
+
+    const source = new AsyncLoader(blocks);
+    source.push(grandparent);
+    source.push(parent);
+    source.push(leaf1);
+    source.push(leaf2);
+    source.push(lister);
+
+    const sel = parseContext().parseSelector(allSelector) as ExploreRecursive;
+    expect(sel.limit.depth).toBe(0);
+
+    let i = 0;
+
+    for await (const blk of walk(new Node(grandparent.cid), sel, source)) {
+      switch (i) {
+        case 0:
+          expect(blk.cid.toString()).toEqual(grandparent.cid.toString());
+          break;
+        case 1:
+          expect(blk.cid.toString()).toEqual(parent.cid.toString());
+          break;
+        case 2:
+          expect(blk.cid.toString()).toEqual(leaf1.cid.toString());
+          break;
+        case 3:
+          expect(blk.cid.toString()).toEqual(leaf2.cid.toString());
+          break;
+        case 4:
+          expect(blk.cid.toString()).toEqual(leaf2.cid.toString());
+          break;
+        case 5:
+          expect(blk.cid.toString()).toEqual(lister.cid.toString());
+          break;
+        case 6:
+          expect(blk.cid.toString()).toEqual(parent.cid.toString());
+          break;
+        case 7:
+          expect(blk.cid.toString()).toEqual(leaf1.cid.toString());
+          break;
+        case 8:
+          expect(blk.cid.toString()).toEqual(leaf2.cid.toString());
+          break;
+        case 9:
+          expect(blk.cid.toString()).toEqual(leaf2.cid.toString());
+          break;
+        case 10:
+          expect(blk.cid.toString()).toEqual(leaf1.cid.toString());
+          break;
+        case 11:
+          expect(blk.cid.toString()).toEqual(leaf2.cid.toString());
+          break;
+      }
+      i++;
+    }
+    expect(i).toBe(12);
   });
 });
