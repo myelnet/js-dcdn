@@ -458,49 +458,42 @@ export class AsyncLoader implements LinkLoader {
     try {
       let blk = this.pending.get(k);
       if (blk) {
-        this.notify(blk);
+        this.flush(blk);
         return blk;
       }
       blk = await blockFromStore(cid, this.store);
       return blk;
     } catch (e) {
-      const blk = await this.waitForBlock(k);
-      this.notify(blk);
+      const blk = await this.waitForBlock(cid);
+      this.flush(blk);
       return blk;
     } finally {
       this.loaded.add(k);
     }
   }
-  async waitForBlock(key: string): Promise<Block<any>> {
+  async waitForBlock(cid: CID): Promise<Block<any>> {
     while (true) {
       await new Promise((resolve) => setTimeout(resolve));
-      const block = this.pending.get(key);
+      const block = this.pending.get(cid.toString());
       if (block) {
         return block;
       }
+      if (this.loaded.has(cid.toString())) {
+        return blockFromStore(cid, this.store);
+      }
     }
   }
+  // these are trusted blocks and don't need to be verified
   push(block: Block<any>) {
     const k = block.cid.toString();
     this.pending.set(k, block);
   }
-  notify(blk: Block<any>) {
+  flush(blk: Block<any>) {
     if (!this.loaded.has(blk.cid.toString())) {
       this.tracker?.(blk);
-    }
-  }
-  // callback is called only if the flush happened
-  flush(cb: () => void) {
-    if (!this.flushed) {
-      this.loaded.forEach((k) => {
-        const blk = this.pending.get(k);
-        if (!blk) {
-          throw new Error('missing pending block');
-        }
-        this.store.put(blk.cid, blk.bytes);
-      });
-      cb();
-      this.flushed = true;
+      this.store
+        .put(blk.cid, new Uint8Array(blk.bytes))
+        .then(() => this.pending.delete(blk.cid.toString()));
     }
   }
 }

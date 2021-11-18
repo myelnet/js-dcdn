@@ -469,10 +469,6 @@ export class Client {
       if (ls) {
         ls.forEach((cb) => cb(state));
       }
-
-      if (state.matches('completed')) {
-        this._loaders.delete(reqId);
-      }
     });
     ch.start();
     return ch;
@@ -482,7 +478,7 @@ export class Client {
     console.log('processing dt message');
     const dtres: TransferMessage = decode(data);
 
-    console.log('new data transfer message', dtres);
+    // console.log('new data transfer message', dtres);
 
     const res = dtres.Response;
     if (!res) {
@@ -692,7 +688,7 @@ export class Client {
   ): AsyncIterable<GraphsyncResponse> {
     for await (const chunk of source) {
       const msg: GraphsyncMessage = await gsMsg.Message.decode(chunk.slice());
-      console.log('new graphsync msg', msg);
+      // console.log('new graphsync msg', msg);
       // extract blocks from graphsync messages
       const blocks: {[key: string]: Block<any>} = (
         await Promise.all((msg.data || []).map(this._decodeBlock))
@@ -1012,7 +1008,6 @@ export class Client {
     link: CID,
     sel: SelectorNode
   ): AsyncIterable<Block<any>> {
-    console.log('starting traversal of tree', link.toString());
     yield* traverse(root, link, sel, this);
     // if we have any ongoing request, notify that we are done streaming the blocks
     // then cleanup
@@ -1023,7 +1018,8 @@ export class Client {
       const loader = this._loaders.get(reqid);
       if (loader) {
         // the callback ensures we only send this event once
-        loader.flush(() => this.updateChannel(reqid, 'ALL_BLOCKS_RECEIVED'));
+        this.updateChannel(reqid, 'ALL_BLOCKS_RECEIVED');
+        this._loaders.delete(reqid);
       }
     }
   }
