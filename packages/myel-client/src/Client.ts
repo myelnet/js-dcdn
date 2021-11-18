@@ -746,6 +746,7 @@ export class Client {
   }
 
   // sink all the responses and update graphsync status if needed
+  // not using it since the data transfer status is enough to know the state of the transfer.
   async _readGsStatus(src: AsyncIterable<GraphsyncResponse>) {
     for await (const msg of src) {
       const gsStatus = msg.status;
@@ -755,8 +756,6 @@ export class Client {
         case GraphsyncResponseStatus.PartialResponse:
         case GraphsyncResponseStatus.RequestPaused:
         case GraphsyncResponseStatus.RequestCompletedPartial:
-          // this means graphsync could not find all the blocks but still got some
-          // TODO: we need to register which blocks we have so we can restart a transfer with someone else
           break;
       }
     }
