@@ -1,6 +1,8 @@
 import {CID} from 'multiformats';
+import {Block, encode as encodeBlock} from 'multiformats/block';
 import {decode as decodePb} from '@ipld/dag-pb';
-import {decode as decodeCbor, encode as encodeCbor} from '@ipld/dag-cbor';
+import * as dagCBOR from '@ipld/dag-cbor';
+import {sha256} from 'multiformats/hashes/sha2';
 import {Blockstore} from 'interface-blockstore';
 import {equals} from './filaddress';
 
@@ -72,10 +74,20 @@ function is(value: any): Kind {
 }
 
 export function selEquals(a: SelectorNode, b: SelectorNode): boolean {
-  return equals(encodeCbor(a), encodeCbor(b));
+  return equals(dagCBOR.encode(a), dagCBOR.encode(b));
 }
 
-class Node {
+export async function selToBlock(
+  sel: SelectorNode
+): Promise<Block<SelectorNode>> {
+  return encodeBlock<SelectorNode, 0x71, 0x12>({
+    value: sel,
+    codec: dagCBOR,
+    hasher: sha256,
+  });
+}
+
+export class Node {
   kind: Kind;
   value: any;
   constructor(value: any) {
@@ -194,7 +206,7 @@ interface SelectorSpec {
   selector: Selector;
 }
 
-interface Selector {
+export interface Selector {
   interests(): PathSegment[];
   explore(node: any, path: PathSegment): Selector | null;
   decide(node: any): boolean;
@@ -400,10 +412,19 @@ function parseLimit(node: LimitNode): RecursionLimit {
 type VisitorFn = (prog: TraversalProgress, node: any) => void;
 type AsyncVisitorFn = (prog: TraversalProgress, node: any) => Promise<void>;
 
-type WatchCIDFn = (cid: CID) => void;
+type BlockNotifyFn = (block: Block<any>) => void;
 
-interface LinkLoader {
-  load(cid: CID): Promise<Uint8Array>;
+export async function blockFromStore(
+  cid: CID,
+  bs: Blockstore
+): Promise<Block<any>> {
+  const bytes = await bs.get(cid);
+  const decode = decoderFor(cid);
+  return new Block({cid, bytes, value: decode ? decode(bytes) : bytes});
+}
+
+export interface LinkLoader {
+  load(cid: CID): Promise<Block<any>>;
 }
 
 export class LinkSystem implements LinkLoader {
@@ -411,41 +432,68 @@ export class LinkSystem implements LinkLoader {
   constructor(store: Blockstore) {
     this.store = store;
   }
-  load(cid: CID): Promise<Uint8Array> {
-    return this.store.get(cid);
+  load(cid: CID): Promise<Block<any>> {
+    return blockFromStore(cid, this.store);
   }
 }
 
 // AsyncLoader waits for a block to be anounced if it is not available in the blockstore
 export class AsyncLoader implements LinkLoader {
   store: Blockstore;
-  listeners: Map<string, WatchCIDFn> = new Map();
-  constructor(store: Blockstore) {
+  // notify callback everytime a new block is loaded
+  tracker?: BlockNotifyFn;
+  // pending are block that have been pushed but not yet loaded
+  pending: Map<string, Block<any>> = new Map();
+  // loaded is a set of string CIDs for content that was loaded.
+  // content included in the set will be flushed to the blockstore.
+  loaded: Set<string> = new Set();
+  // flag if this async loader was already flushed
+  flushed = false;
+  constructor(store: Blockstore, tracker?: BlockNotifyFn) {
     this.store = store;
+    this.tracker = tracker;
   }
-  async load(cid: CID): Promise<Uint8Array> {
-    const has = await this.store.has(cid);
-    if (!has) {
-      await this.waitForBlock(cid);
-      this.listeners.delete(cid.toString());
+  async load(cid: CID): Promise<Block<any>> {
+    const k = cid.toString();
+    try {
+      let blk = this.pending.get(k);
+      if (blk) {
+        this.flush(blk);
+        return blk;
+      }
+      blk = await blockFromStore(cid, this.store);
+      return blk;
+    } catch (e) {
+      const blk = await this.waitForBlock(cid);
+      this.flush(blk);
+      return blk;
+    } finally {
+      this.loaded.add(k);
     }
-    return this.store.get(cid);
   }
-  async waitForBlock(cid: CID): Promise<void> {
-    await new Promise((resolve, reject) => {
-      // TODO: timeout
-      const onNextCID = (ncid: CID) => {
-        if (ncid.equals(cid)) {
-          resolve(null);
-        }
-      };
-      this.listeners.set(cid.toString(), onNextCID);
-    });
+  async waitForBlock(cid: CID): Promise<Block<any>> {
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve));
+      const block = this.pending.get(cid.toString());
+      if (block) {
+        return block;
+      }
+      if (this.loaded.has(cid.toString())) {
+        return blockFromStore(cid, this.store);
+      }
+    }
   }
-  publish(cid: CID) {
-    const cb = this.listeners.get(cid.toString());
-    if (cb) {
-      cb(cid);
+  // these are trusted blocks and don't need to be verified
+  push(block: Block<any>) {
+    const k = block.cid.toString();
+    this.pending.set(k, block);
+  }
+  flush(blk: Block<any>) {
+    if (!this.loaded.has(blk.cid.toString())) {
+      this.tracker?.(blk);
+      this.store
+        .put(blk.cid, new Uint8Array(blk.bytes))
+        .then(() => this.pending.delete(blk.cid.toString()));
     }
   }
 }
@@ -547,12 +595,8 @@ export function traversal(config: TraversalConfig) {
       }
     },
     async loadLink(link: CID): Promise<any> {
-      const decode = decoderFor(link);
       const block = await config.linkLoader.load(link);
-      if (!decode) {
-        return block;
-      }
-      return decode(block);
+      return block.value;
     },
   };
 }
@@ -634,8 +678,88 @@ export function decoderFor(cid: CID): Decoder | null {
     case 0x70:
       return decodePb;
     case 0x71:
-      return decodeCbor;
+      return dagCBOR.decode;
     default:
       throw new Error('unsuported codec: ' + cid.code);
+  }
+}
+
+export function toPathComponents(path = ''): string[] {
+  // split on / unless escaped with \
+  return (path.trim().match(/([^\\^/]|\\\/)+/g) || []).filter(Boolean);
+}
+
+interface DAGResolver {
+  loadOrRequest(
+    root: CID,
+    link: CID,
+    sel: SelectorNode,
+    blk: CID
+  ): Promise<Block<any>>;
+}
+
+export async function* traverse(
+  root: CID, // the root node of the FULL DAG
+  link: CID, // the link at where we start the traversal. Can be the root.
+  sel: SelectorNode,
+  resolver: DAGResolver
+) {
+  const loader = {
+    load: (cid: CID): Promise<Block<any>> => {
+      return resolver.loadOrRequest(root, link, sel, cid);
+    },
+  };
+  yield* walk(new Node(link), parseContext().parseSelector(sel), loader);
+}
+
+export async function* walk(
+  node: Node,
+  sel: Selector,
+  source: LinkLoader
+): AsyncIterable<Block<any>> {
+  let nd = node;
+  if (nd.kind === Kind.Link) {
+    const k = nd.value.toString();
+
+    const blk = await source.load(nd.value);
+    yield blk;
+
+    nd = new Node(blk.value);
+  }
+
+  // if this block has no links we should be done
+  switch (nd.kind) {
+    case Kind.Map:
+    case Kind.List:
+      break;
+    default:
+      return;
+  }
+
+  // check if there's specific paths we should explore
+  const attn = sel.interests();
+  if (attn.length) {
+    for (const ps of attn) {
+      const value = nd.lookupBySegment(ps);
+      if (value === null) {
+        break;
+      }
+      const sNext = sel.explore(nd.value, ps);
+      if (sNext !== null) {
+        yield* walk(value, sNext, source);
+      }
+    }
+  } else {
+    // visit everything
+    for (const itr = segmentIterator(nd.value); !itr.done(); ) {
+      let {pathSegment, value} = itr.next();
+      if (!pathSegment) {
+        continue;
+      }
+      const sNext = sel.explore(nd.value, pathSegment);
+      if (sNext !== null) {
+        yield* walk(new Node(value), sNext, source);
+      }
+    }
   }
 }

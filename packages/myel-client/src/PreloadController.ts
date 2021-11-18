@@ -11,18 +11,22 @@ import {Address} from './filaddress';
 import {Multiaddr} from 'multiaddr';
 import {Blockstore, MemoryBlockstore} from 'interface-blockstore';
 import {Datastore} from 'interface-Datastore';
+import drain from 'it-drain';
 import {Client, DealOffer} from './Client';
 import {
   getSelector,
   entriesSelector,
   allSelector,
   decoderFor,
+  SelectorNode,
+  toPathComponents,
 } from './selectors';
 import {FilRPC} from './FilRPC';
 import {ChannelState} from './fsm';
 import {decodeFilAddress} from './filaddress';
 import {BlockstoreAdapter} from './BlockstoreAdapter';
 import {detectContentType} from './mimesniff';
+import {toReadableStream} from './utils';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -32,7 +36,10 @@ type ControllerOptions = {
   privateKey?: string;
   blocks?: Blockstore;
   datastore?: Datastore;
+  rankOffersFn?: RankOfferFn;
 };
+
+type RankOfferFn = (offers: DealOffer[]) => DealOffer[];
 
 type ContentEntry = {
   root: string;
@@ -44,36 +51,6 @@ type ContentEntry = {
   paymentChannel?: Address;
 };
 
-function toReadableStream<T>(
-  source: (AsyncIterable<T> & {return?: () => {}}) | AsyncGenerator<T, any, any>
-): ReadableStream<T> {
-  const iterator = source[Symbol.asyncIterator]();
-  return new ReadableStream({
-    async pull(controller: ReadableStreamDefaultController) {
-      try {
-        const chunk = await iterator.next();
-        if (chunk.done) {
-          controller.close();
-        } else {
-          controller.enqueue(chunk.value);
-        }
-      } catch (error) {
-        controller.error(error);
-      }
-    },
-    cancel(reason: any) {
-      if (source.return) {
-        source.return(reason);
-      }
-    },
-  });
-}
-
-function toPathComponents(path = ''): string[] {
-  // split on / unless escaped with \
-  return (path.trim().match(/([^\\^/]|\\\/)+/g) || []).filter(Boolean);
-}
-
 export class PreloadController {
   private _client?: Client;
   private _installAndActiveListenersAdded?: boolean;
@@ -81,11 +58,16 @@ export class PreloadController {
   private readonly _cidToRecords: Map<string, DealOffer[]> = new Map();
   private readonly _dialDurations: Map<string, number> = new Map();
   private readonly _options: Libp2pOptions & ControllerOptions;
+  // sets a custom strategy for selecting best offers
+  rankOffersFn: RankOfferFn = (offers) => offers;
 
   constructor(options: Libp2pOptions & ControllerOptions) {
     this._options = options;
     this.install = this.install.bind(this);
     this.activate = this.activate.bind(this);
+    this.getOffer = this.getOffer.bind(this);
+
+    if (options.rankOffersFn) this.rankOffersFn = options.rankOffersFn;
   }
 
   preload(entries: ContentEntry[]): void {
@@ -131,6 +113,7 @@ export class PreloadController {
         libp2p,
         blocks,
         rpc: new FilRPC('https://infura.myel.cloud'),
+        routingFn: this.getOffer,
       });
 
       if (this._options.privateKey) {
@@ -140,11 +123,8 @@ export class PreloadController {
 
       for (const [cid, entry] of this._cidToContentEntry) {
         const root = CID.parse(cid);
-        const offer = await this.offerFromEntry(root, entry);
-        await this._client.loadAsync(
-          offer,
-          getSelector(entry.selector),
-          (state: ChannelState) => state.matches('completed')
+        await drain(
+          this._client.resolve(root, root, getSelector(entry.selector))
         );
       }
       return self.skipWaiting();
@@ -163,98 +143,16 @@ export class PreloadController {
   }
 
   async match(url: string): Promise<Response> {
-    const segs = toPathComponents(url);
-    console.log(url);
-    const root = CID.parse(segs[0]);
-    // load an offer. throws if none can be found
-    const offer = await this.getOffer(root);
-
-    // log if we have an existing connection with the peer before the transfer
-    this._setDialDuration(offer.peerAddr);
-
-    const key = segs.length > 1 ? segs.pop() : undefined;
-
-    return this.handleRequest(offer, root, key);
-  }
-
-  async handleRequest(
-    offer: DealOffer,
-    root: CID,
-    key?: string
-  ): Promise<Response> {
     if (!this._client) {
       throw new Error('client is not initialized');
     }
-    // check if we have the blocks already
-    let block;
-    try {
-      block = await this._client.blocks.get(root);
-    } catch (e) {
-      // else load the entries
-      await this._client.loadAsync(
-        offer,
-        key ? entriesSelector : allSelector,
-        (state: ChannelState) => state.matches('completed')
-      );
-      return this.handleRequest(offer, root, key);
-    }
 
-    const decode = decoderFor(root);
-    if (!decode) {
-      return new Response(block);
-    }
+    const content = this._client.resolver(url);
 
-    const node = decode(block);
-
-    try {
-      const unixfs = UnixFS.unmarshal(node.Data);
-      if (!unixfs.isDirectory()) {
-        return this.streamResponse(root, offer);
-      }
-    } catch (err) {
-      // non-UnixFS dag-pb node. we can keep trying just in case
-      console.log(err);
-    }
-
-    // If it's a directory and no keys are specified, return all entries in JSON
-    if (!key) {
-      const entries: {name: string; hash: string; size: number}[] =
-        node.Links.map((l: PBLink) => ({
-          name: l.Name,
-          hash: l.Hash.toString(),
-          size: l.Tsize,
-        }));
-      return new Response(JSON.stringify(entries, null, '\t'), {
-        status: 200,
-        headers: {
-          'content-type': 'application/json',
-        },
-      });
-    }
-
-    // for now we assume our node is a unixfs directory
-    for (const link of node.Links) {
-      if (key === link.Name) {
-        const has = await this._client.blocks.has(link.Hash);
-        if (!has) {
-          await this._client.loadAsync(offer, getSelector('*'));
-        }
-        return this.streamResponse(link.Hash, offer, key);
-      }
-    }
-    throw new Error('key not found');
-  }
-
-  async streamResponse(
-    cid: CID,
-    offer: DealOffer,
-    key?: string
-  ): Promise<Response> {
-    const content = this.cat(cid);
     let body = toReadableStream(content);
-    const headers = this._metaHeaders(offer);
-    if (key) {
-      const extension = key.split('.').pop() as string;
+    const headers = this._metaHeaders();
+    if (/\./.test(url)) {
+      const extension = url.split('.').pop();
       if (extension && mime.getType(extension)) {
         headers['content-type'] = mime.getType(extension);
       }
@@ -274,34 +172,18 @@ export class PreloadController {
     });
   }
 
-  // do not use before the service worker is fully installed
-  async *cat(ipfsPath: string | CID, options = {}) {
-    const file = await exporter(ipfsPath, this._client!.blocks, options);
-
-    // File may not have unixfs prop if small & imported with rawLeaves true
-    if (file.type === 'directory') {
-      throw new Error('this dag node is a directory');
-    }
-
-    if (!file.content) {
-      throw new Error('this dag node has no content');
-    }
-
-    yield* file.content(options);
-  }
-
-  async getOffer(root: CID): Promise<DealOffer> {
+  async getOffer(root: CID, sel?: SelectorNode): Promise<DealOffer[]> {
     const key = root.toString();
     // check if we already have records:
     // content entry are statically loaded
     const entry = this._cidToContentEntry.get(key);
     if (entry) {
-      return this.offerFromEntry(root, entry);
+      return [await this.offerFromEntry(root, entry)];
     }
     // records are cached from a previous request
     const recs = this._cidToRecords.get(key);
     if (recs) {
-      return recs[0];
+      return this.rankOffersFn(recs);
     }
     // fetch a routing file can be from a local or remote endpoint
     const raw = await fetch(this._options.routingUrl + '/' + key).then((resp) =>
@@ -324,7 +206,7 @@ export class PreloadController {
       };
     });
     this._cidToRecords.set(key, records);
-    return records[0];
+    return this.rankOffersFn(records);
   }
 
   offerFromEntry(root: CID, entry: ContentEntry): DealOffer {
@@ -352,8 +234,8 @@ export class PreloadController {
     this._dialDurations.set(addr, end - start);
   }
 
-  _metaHeaders(offer: DealOffer): {[key: string]: any} {
-    const dur = this._dialDurations.get(offer.peerAddr) ?? 0;
+  _metaHeaders(): {[key: string]: any} {
+    const dur = 0;
     const serverTiming = 'dial;dur=' + dur.toFixed(2);
     return {
       'Server-Timing': serverTiming,

@@ -1,15 +1,26 @@
 import {MemoryBlockstore} from 'interface-blockstore';
-import {Client} from '../Client';
+import {encode} from 'multiformats/block';
+import {Client, DT_EXTENSION, DealOffer} from '../Client';
 import {allSelector, entriesSelector} from '../selectors';
 import {MockRPCProvider, MockLibp2p} from './utils';
 import PeerId from 'peer-id';
 import {CID, bytes} from 'multiformats';
+import {sha256} from 'multiformats/hashes/sha2';
 import {BN} from 'bn.js';
-import {newIDAddress, newActorAddress, decodeFilAddress} from '../filaddress';
-import {encode} from '@ipld/dag-cbor';
+import {
+  newIDAddress,
+  newActorAddress,
+  decodeFilAddress,
+  concat,
+} from '../filaddress';
+import * as dagCBOR from '@ipld/dag-cbor';
 import {ChannelState, DealState} from '../fsm';
 import * as fix from './fixtures';
 import crypto from 'crypto';
+import {pipe} from 'it-pipe';
+import drain from 'it-drain';
+import {importer} from 'ipfs-unixfs-importer';
+import {toReadableStream} from '../utils';
 
 global.crypto = {
   subtle: {
@@ -18,8 +29,158 @@ global.crypto = {
       crypto.createHash('sha256').update(data).digest(),
   },
 };
+async function* gsTwoBlocks(): AsyncIterable<Uint8Array> {
+  yield fix.gsMsg1;
+  yield fix.gsMsg2;
+}
+async function* gsOneBlock(): AsyncIterable<Uint8Array> {
+  yield fix.gsMsgSingleBlock;
+}
+async function* gsFirstBlock(): AsyncIterable<Uint8Array> {
+  yield fix.gsMsg1;
+}
+async function* gs2ndBlock(): AsyncIterable<Uint8Array> {
+  yield fix.gsMsg2;
+}
 
 describe('MyelClient', () => {
+  test('cbor resolver', async () => {
+    const rpc = new MockRPCProvider();
+    const bs = new MemoryBlockstore();
+    const libp2p = new MockLibp2p(
+      PeerId.createFromB58String(
+        '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
+      )
+    );
+    const client = new Client({
+      rpc,
+      blocks: bs,
+      libp2p,
+    });
+
+    const child = await encode({
+      value: {
+        name: 'blob',
+        attribute: 2,
+      },
+      hasher: sha256,
+      codec: dagCBOR,
+    });
+    await bs.put(child.cid, child.bytes);
+    const otherChild = await encode({
+      value: {
+        name: 'ignore',
+        attribute: 1,
+      },
+      hasher: sha256,
+      codec: dagCBOR,
+    });
+    await bs.put(otherChild.cid, otherChild.bytes);
+    const parent = await encode({
+      value: [child.cid, otherChild.cid],
+      hasher: sha256,
+      codec: dagCBOR,
+    });
+    await bs.put(parent.cid, parent.bytes);
+
+    const result = client.resolver('/' + parent.cid.toString() + '/0');
+    for await (const value of result) {
+      expect(dagCBOR.decode(value)).toEqual({name: 'blob', attribute: 2});
+    }
+  });
+  test('unixfs resolver', async () => {
+    const rpc = new MockRPCProvider();
+    const bs = new MemoryBlockstore();
+    const libp2p = new MockLibp2p(
+      PeerId.createFromB58String(
+        '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
+      )
+    );
+    const client = new Client({
+      rpc,
+      blocks: bs,
+      libp2p,
+    });
+
+    const first = new Uint8Array(5 * 256);
+    const second = new Uint8Array(3 * 256);
+    const third = new Uint8Array(2 * 256);
+    const forth = new Uint8Array(4 * 256);
+
+    const entries = [
+      {
+        name: 'children',
+        hash: 'bafybeiepvdqmdakhtwotvykxujrmt5fcq4xca5jmoo6wzxhjk3q3pqe4te',
+        size: 1942,
+      },
+      {
+        name: 'first',
+        hash: 'bafybeicy7k3czubnosykt5jk27xggdzrjcqr6skjfcghzxz22oash44ri4',
+        size: 1527,
+      },
+      {
+        name: 'second',
+        hash: 'bafybeihn4abm7nqsx3l3efwgdto6aqbbz3sduyiguhshypgzwp5i4hq2x4',
+        size: 919,
+      },
+    ];
+    // chunk and dagify it then get the root cid
+    let cid;
+    for await (const chunk of importer(
+      [
+        {path: 'first', content: first},
+        {path: 'second', content: second},
+        {path: '/children/third', content: third},
+        {path: '/children/forth', content: forth},
+      ],
+      bs,
+      {
+        cidVersion: 1,
+        maxChunkSize: 256,
+        rawLeaves: true,
+        wrapWithDirectory: true,
+      }
+    )) {
+      if (chunk.path === '') {
+        cid = chunk.cid;
+      }
+    }
+    // we can resolve the entries
+    const dir = client.resolver('/' + cid?.toString());
+    for await (const value of dir) {
+      expect(JSON.parse(value)).toEqual(entries);
+    }
+
+    // we can resolve the first entry
+    const result1 = client.resolver('/' + cid?.toString() + '/first');
+    let buf = new Uint8Array(0);
+    for await (const value of result1) {
+      buf = concat([buf, value], buf.length + value.length);
+    }
+    expect(buf).toEqual(first);
+
+    // we can resolve the second entry
+    const result2 = client.resolver('/' + cid?.toString() + '/second');
+    buf = new Uint8Array(0);
+    for await (const value of result2) {
+      buf = concat([buf, value], buf.length + value.length);
+    }
+    expect(buf).toEqual(second);
+
+    const result3 = client.resolver('/' + cid?.toString() + '/children/third');
+    buf = new Uint8Array(0);
+    for await (const value of result3) {
+      buf = concat([buf, value], buf.length + value.length);
+    }
+    expect(buf).toEqual(third);
+
+    const result4 = client.resolver('/' + cid?.toString() + '/children/forth');
+    buf = new Uint8Array(0);
+    for await (const value of result4) {
+      buf = concat([buf, value], buf.length + value.length);
+    }
+    expect(buf).toEqual(forth);
+  });
   test('handles a free transfer async', async () => {
     const rpc = new MockRPCProvider();
     const blocks = new MemoryBlockstore();
@@ -28,14 +189,16 @@ describe('MyelClient', () => {
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
       )
     );
+    const offers: DealOffer[] = [];
     const client = new Client({
       rpc,
       blocks,
       libp2p,
+      routingFn: async (k: CID) => offers,
     });
-    client._dtReqId = 1627988723469;
+    client._dealId = 1627988723469;
 
-    const offer = {
+    offers.push({
       id: '1',
       peerAddr:
         '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
@@ -47,28 +210,43 @@ describe('MyelClient', () => {
       minPricePerByte: new BN(0),
       maxPaymentInterval: 0,
       maxPaymentIntervalIncrease: 0,
+    });
+
+    const root = offers[0].cid;
+
+    const onTransferStart = () => {
+      return new Promise((resolve) => {
+        client.on('waitForAcceptance', () => {
+          pipe(
+            gsTwoBlocks(),
+            client._interceptBlocks,
+            client._readGsExtension(
+              DT_EXTENSION,
+              client._processTransferMessage
+            ),
+            client._readGsStatus
+          )
+            .then(() => client._processTransferMessage(fix.dtMsgCompleted))
+            .then(resolve);
+        });
+      });
     };
 
-    const ppid = PeerId.createFromB58String(
-      '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
-    );
-
-    const state = await Promise.all([
-      client.loadAsync(offer, allSelector),
+    await Promise.all([
+      onTransferStart(),
+      drain(client.resolve(root, root, allSelector)),
       // test deduplication
-      client.loadAsync(offer, allSelector),
-      // here the order is crucial
-      client
-        ._handleGraphsyncMsg(ppid, fix.gsMsg1)
-        .then(() => client._handleGraphsyncMsg(ppid, fix.gsMsg2))
-        .then(() => client._processTransferMessage(fix.dtMsgCompleted)),
+      drain(client.resolve(root, root, allSelector)),
     ]);
 
-    expect(state[0].matches('completed')).toBe(true);
-    expect(state[0].context.received).toBe(1214);
-    expect(state[0].context.allReceived).toBe(true);
+    const {state} = await client.getChannelForParams(
+      offers[0].cid,
+      allSelector
+    );
 
-    expect(state[1].matches('completed')).toBe(true);
+    expect(state.matches('completed')).toBe(true);
+    expect(state.context.received).toBe(1214);
+    expect(state.context.allReceived).toBe(true);
   });
 
   test('handles a one block transfer', async () => {
@@ -79,14 +257,16 @@ describe('MyelClient', () => {
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
       )
     );
+    const offers: DealOffer[] = [];
     const client = new Client({
       rpc,
       blocks,
       libp2p,
+      routingFn: async (k: CID) => offers,
     });
-    client._dtReqId = 1630453456080;
+    client._dealId = 1630453456080;
 
-    const offer = {
+    offers.push({
       id: '1',
       peerAddr:
         '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
@@ -98,24 +278,47 @@ describe('MyelClient', () => {
       minPricePerByte: new BN(0),
       maxPaymentInterval: 0,
       maxPaymentIntervalIncrease: 0,
-    };
+    });
 
     const ppid = PeerId.createFromB58String(
       '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
     );
 
-    const state = await Promise.all([
-      client.loadAsync(offer, entriesSelector),
-      client._handleGraphsyncMsg(ppid, fix.gsMsgSingleBlock),
-      client._processTransferMessage(fix.dtMsgSingleBlockComplete),
-    ]);
+    const onTransferStart = () => {
+      return new Promise((resolve) => {
+        client.on('waitForAcceptance', () => {
+          pipe(
+            gsOneBlock(),
+            client._interceptBlocks,
+            client._readGsExtension(
+              DT_EXTENSION,
+              client._processTransferMessage
+            ),
+            client._readGsStatus
+          );
+          client._processTransferMessage(fix.dtMsgSingleBlockComplete);
+          resolve(null);
+        });
+      });
+    };
 
-    expect(state[0].matches('completed')).toBe(true);
-    expect(state[0].context.received).toBe(326);
-    expect(state[0].context.allReceived).toBe(true);
+    const root = offers[0].cid;
+
+    await Promise.all([
+      onTransferStart(),
+      drain(client.resolve(root, root, entriesSelector)),
+    ]);
+    const {state} = await client.getChannelForParams(
+      offers[0].cid,
+      entriesSelector
+    );
+
+    expect(state.matches('completed')).toBe(true);
+    expect(state.context.received).toBe(326);
+    expect(state.context.allReceived).toBe(true);
   });
 
-  describe('handles a paid transfers', () => {
+  describe('handles paid transfers', () => {
     const rpc = new MockRPCProvider();
 
     // prepare payment mocks
@@ -132,7 +335,7 @@ describe('MyelClient', () => {
     rpc.results.set('StateSearchMsg', {
       Receipt: {
         ExitCode: 0,
-        Return: Buffer.from(encode([idaddr.str, chaddr.str])).toString(
+        Return: Buffer.from(dagCBOR.encode([idaddr.str, chaddr.str])).toString(
           'base64'
         ),
       },
@@ -154,7 +357,6 @@ describe('MyelClient', () => {
       },
     });
 
-    const blocks = new MemoryBlockstore();
     const libp2p = new MockLibp2p(
       PeerId.createFromB58String(
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
@@ -168,16 +370,19 @@ describe('MyelClient', () => {
       [300, 'completed'],
       [0, 'completed'],
     ])('whith timeout %i', async (timeout, endstate) => {
+      const blocks = new MemoryBlockstore();
       // start a new client each time as we're using the same request id
+      const offers: DealOffer[] = [];
       const client = new Client({
         rpc,
         blocks,
         libp2p,
         rpcMsgTimeout: timeout,
+        routingFn: async (k: CID) => offers,
       });
-      client._dtReqId = 1627988723469;
+      client._dealId = 1627988723469;
 
-      const offer = {
+      offers.push({
         id: '1',
         peerAddr:
           '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
@@ -189,50 +394,70 @@ describe('MyelClient', () => {
         minPricePerByte: new BN(1),
         maxPaymentInterval: 1 << 20,
         maxPaymentIntervalIncrease: 1 << 20,
+      });
+
+      client.on('waitForAcceptance', (state) => {
+        if (state.context.received === 0) {
+          pipe(
+            gsFirstBlock(),
+            client._interceptBlocks,
+            client._readGsExtension(
+              DT_EXTENSION,
+              client._processTransferMessage
+            ),
+            client._readGsStatus
+          );
+        }
+      });
+      client.on('ongoing', (state) => {
+        if (state.context.fundsSpent.gt(new BN(0))) {
+          client._processTransferMessage(fix.dtMsgCompleted);
+        } else if (state.context.allReceived) {
+          client._processTransferMessage(fix.dtMsgPaymentReq);
+        } else if (state.context.received === 87) {
+          pipe(
+            gs2ndBlock(),
+            client._interceptBlocks,
+            client._readGsExtension(
+              DT_EXTENSION,
+              client._processTransferMessage
+            ),
+            client._readGsStatus
+          );
+        }
+      });
+
+      const onCompleted = (): Promise<ChannelState> => {
+        return new Promise((resolve) => {
+          client.on('completed', (state) => {
+            resolve(state);
+          });
+        });
       };
 
-      const state: ChannelState = await new Promise((resolve, reject) =>
-        client.load(
-          offer,
-          allSelector,
-          (err: Error | null, state: ChannelState) => {
-            expect(err).toBe(null);
-            switch (state.value) {
-              case 'waitForAcceptance':
-                if (state.context.received === 0) {
-                  client._handleGraphsyncMsg(ppid, fix.gsMsg1);
-                }
-                break;
-              case 'accepted':
-                if (state.context.received === 87) {
-                  client._handleGraphsyncMsg(ppid, fix.gsMsg2);
-                }
-              case 'ongoing':
-                if (state.context.fundsSpent.gt(new BN(0))) {
-                  client._processTransferMessage(fix.dtMsgCompleted);
-                } else if (state.context.allReceived) {
-                  client._processTransferMessage(fix.dtMsgPaymentReq);
-                }
-                break;
-              case 'completed':
-                resolve(state);
-            }
-          }
-        )
-      );
-      expect(state.matches(endstate)).toBe(true);
+      const root = offers[0].cid;
+
+      const result = await Promise.all([
+        onCompleted(),
+        drain(client.resolve(root, root, allSelector)),
+      ]);
+
+      expect(result[0].matches(endstate)).toBe(true);
     });
 
     test('immediate payment request', async () => {
+      const blocks = new MemoryBlockstore();
+      const offers: DealOffer[] = [];
       const client = new Client({
         rpc,
         blocks,
         libp2p,
         rpcMsgTimeout: 300,
+        routingFn: async (k: CID) => offers,
       });
-      client._dtReqId = 1627988723469;
+      client._dealId = 1627988723469;
 
-      const offer = {
+      offers.push({
         id: '1',
         peerAddr:
           '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
@@ -244,35 +469,50 @@ describe('MyelClient', () => {
         minPricePerByte: new BN(1),
         maxPaymentInterval: 1 << 20,
         maxPaymentIntervalIncrease: 1 << 20,
+      });
+
+      client.on('waitForAcceptance', (state) => {
+        if (state.context.received === 0) {
+          pipe(
+            gsFirstBlock(),
+            client._interceptBlocks,
+            client._readGsExtension(
+              DT_EXTENSION,
+              client._processTransferMessage
+            ),
+            client._readGsStatus
+          );
+        }
+      });
+      client.on('accepted', (state) => {
+        pipe(
+          gs2ndBlock(),
+          client._interceptBlocks,
+          client._readGsExtension(DT_EXTENSION, client._processTransferMessage),
+          client._readGsStatus
+        );
+        client._processTransferMessage(fix.dtMsgPaymentReq);
+      });
+      client.on('ongoing', (state) => {
+        if (state.context.fundsSpent.gt(new BN(0))) {
+          client._processTransferMessage(fix.dtMsgCompleted);
+        }
+      });
+
+      const root = offers[0].cid;
+
+      await drain(client.resolve(root, root, allSelector));
+
+      const onCompleted = (): Promise<ChannelState> => {
+        return new Promise((resolve) => {
+          client.on('completed', (state) => {
+            resolve(state);
+          });
+        });
       };
 
-      const state: ChannelState = await new Promise((resolve, reject) =>
-        client.load(
-          offer,
-          allSelector,
-          (err: Error | null, state: ChannelState) => {
-            expect(err).toBe(null);
-            switch (state.value) {
-              case 'waitForAcceptance':
-                if (state.context.received === 0) {
-                  client._handleGraphsyncMsg(ppid, fix.gsMsg1);
-                }
-                break;
-              case 'accepted':
-                client._handleGraphsyncMsg(ppid, fix.gsMsg2);
-                client._processTransferMessage(fix.dtMsgPaymentReq);
-                break;
-              case 'ongoing':
-                if (state.context.fundsSpent.gt(new BN(0))) {
-                  client._processTransferMessage(fix.dtMsgCompleted);
-                }
-                break;
-              case 'completed':
-                resolve(state);
-            }
-          }
-        )
-      );
+      const state = await onCompleted();
+
       expect(state.matches('completed')).toBe(true);
     });
   });
@@ -294,7 +534,7 @@ describe('MyelClient', () => {
     rpc.results.set('StateSearchMsg', {
       Receipt: {
         ExitCode: 0,
-        Return: Buffer.from(encode([idaddr.str, chaddr.str])).toString(
+        Return: Buffer.from(dagCBOR.encode([idaddr.str, chaddr.str])).toString(
           'base64'
         ),
       },
@@ -343,15 +583,17 @@ describe('MyelClient', () => {
       '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
     );
 
+    const offers: DealOffer[] = [];
     const client = new Client({
       rpc,
       blocks,
       libp2p,
       rpcMsgTimeout: 0, // no important since this transfer shouldn't require onchain messages
+      routingFn: async (k: CID) => offers,
     });
-    client._dtReqId = 1627988723469;
+    client._dealId = 1627988723469;
 
-    const offer = {
+    offers.push({
       id: '1',
       peerAddr:
         '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
@@ -366,37 +608,56 @@ describe('MyelClient', () => {
       paymentChannel: decodeFilAddress(
         'f2kg3awbapuij6zbory6zlvpd5ob6dhqrzlr2ekgq'
       ),
-    };
+    });
 
-    const state: ChannelState = await new Promise((resolve, reject) =>
-      client.load(
-        offer,
-        allSelector,
-        (err: Error | null, state: ChannelState) => {
-          expect(err).toBe(null);
-          switch (state.value) {
-            case 'waitForAcceptance':
-              if (state.context.received === 0) {
-                client._handleGraphsyncMsg(ppid, fix.gsMsg1);
-              }
-              break;
-            case 'accepted':
-              if (state.context.received === 87) {
-                client._handleGraphsyncMsg(ppid, fix.gsMsg2);
-              }
-            case 'ongoing':
-              if (state.context.fundsSpent.gt(new BN(0))) {
-                client._processTransferMessage(fix.dtMsgCompleted);
-              } else if (state.context.allReceived) {
-                client._processTransferMessage(fix.dtMsgPaymentReq);
-              }
-              break;
-            case 'completed':
-              resolve(state);
-          }
-        }
-      )
-    );
-    expect(state.matches('completed')).toBe(true);
+    client.on('waitForAcceptance', (state) => {
+      if (state.context.received === 0) {
+        pipe(
+          gsFirstBlock(),
+          client._interceptBlocks,
+          client._readGsExtension(DT_EXTENSION, client._processTransferMessage),
+          client._readGsStatus
+        );
+      }
+    });
+    client.on('accepted', (state) => {
+      if (state.context.received === 87) {
+        pipe(
+          gs2ndBlock(),
+          client._interceptBlocks,
+          client._readGsExtension(DT_EXTENSION, client._processTransferMessage),
+          client._readGsStatus
+        );
+      }
+    });
+    client.on('ongoing', (state) => {
+      if (state.context.fundsSpent.gt(new BN(0))) {
+        client._processTransferMessage(fix.dtMsgCompleted);
+      } else if (state.context.allReceived) {
+        client._processTransferMessage(fix.dtMsgPaymentReq);
+      } else if (state.context.received === 87) {
+        pipe(
+          gs2ndBlock(),
+          client._interceptBlocks,
+          client._readGsExtension(DT_EXTENSION, client._processTransferMessage),
+          client._readGsStatus
+        );
+      }
+    });
+
+    const onCompleted = (): Promise<ChannelState> => {
+      return new Promise((resolve) => {
+        client.on('completed', (state) => {
+          resolve(state);
+        });
+      });
+    };
+    const root = offers[0].cid;
+    const result = await Promise.all([
+      onCompleted(),
+      drain(client.resolve(root, root, allSelector)),
+    ]);
+
+    expect(result[0].matches('completed')).toBe(true);
   });
 });
