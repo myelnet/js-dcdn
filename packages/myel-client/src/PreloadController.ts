@@ -3,7 +3,6 @@ import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {PBLink} from '@ipld/dag-pb';
 import {exporter} from 'ipfs-unixfs-exporter';
 import {UnixFS} from 'ipfs-unixfs';
-import mime from 'mime/lite';
 import Libp2p, {Libp2pOptions} from 'libp2p';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
@@ -25,8 +24,6 @@ import {FilRPC} from './FilRPC';
 import {ChannelState} from './fsm';
 import {decodeFilAddress} from './filaddress';
 import {BlockstoreAdapter} from './BlockstoreAdapter';
-import {detectContentType} from './mimesniff';
-import {toReadableStream} from './utils';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -56,7 +53,6 @@ export class PreloadController {
   private _installAndActiveListenersAdded?: boolean;
   private readonly _cidToContentEntry: Map<string, ContentEntry> = new Map();
   private readonly _cidToRecords: Map<string, DealOffer[]> = new Map();
-  private readonly _dialDurations: Map<string, number> = new Map();
   private readonly _options: Libp2pOptions & ControllerOptions;
   // sets a custom strategy for selecting best offers
   rankOffersFn: RankOfferFn = (offers) => offers;
@@ -77,9 +73,12 @@ export class PreloadController {
       self.addEventListener('install', this.install);
       self.addEventListener('activate', this.activate);
       self.addEventListener('fetch', ((event: FetchEvent) => {
+        if (!this._client) {
+          return;
+        }
         const url = new URL(event.request.url);
         event.respondWith(
-          this.match(url.pathname).catch((err) => {
+          this._client.fetch(url.pathname, {headers: {}}).catch((err) => {
             console.log(err);
             return fetch(event.request);
           })
@@ -142,36 +141,6 @@ export class PreloadController {
     return promise;
   }
 
-  async match(url: string): Promise<Response> {
-    if (!this._client) {
-      throw new Error('client is not initialized');
-    }
-
-    const content = this._client.resolver(url);
-
-    let body = toReadableStream(content);
-    const headers = this._metaHeaders();
-    if (/\./.test(url)) {
-      const extension = url.split('.').pop();
-      if (extension && mime.getType(extension)) {
-        headers['content-type'] = mime.getType(extension);
-      }
-    }
-    if (!headers['content-type']) {
-      const [peek, out] = body.tee();
-      const reader = peek.getReader();
-      const {value, done} = await reader.read();
-      // TODO: this may not work if the first chunk is < 512bytes.
-
-      headers['content-type'] = detectContentType(value);
-      body = out;
-    }
-    return new Response(body, {
-      status: 200,
-      headers,
-    });
-  }
-
   async getOffer(root: CID, sel?: SelectorNode): Promise<DealOffer[]> {
     const key = root.toString();
     // check if we already have records:
@@ -220,25 +189,6 @@ export class PreloadController {
       maxPaymentIntervalIncrease: 1 << 20,
       paymentAddress: entry.paymentAddress,
       paymentChannel: entry.paymentChannel,
-    };
-  }
-
-  async _setDialDuration(addr: string) {
-    if (!this._client) {
-      throw new Error('client is not initialized');
-    }
-    const start = performance.now();
-    await this._client.libp2p.dial(addr);
-    const end = performance.now();
-
-    this._dialDurations.set(addr, end - start);
-  }
-
-  _metaHeaders(): {[key: string]: any} {
-    const dur = 0;
-    const serverTiming = 'dial;dur=' + dur.toFixed(2);
-    return {
-      'Server-Timing': serverTiming,
     };
   }
 }

@@ -110,7 +110,7 @@ let dedupePlugin = {
 (async () => {
   const result = await esbuild.build({
     entryPoints: {
-      worker: 'src/index.ts',
+      worker: 'src/cfw.ts',
       sw: 'src/sw.ts',
     },
     bundle: true,

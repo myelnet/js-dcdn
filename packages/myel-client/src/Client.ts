@@ -9,6 +9,7 @@ import PeerId from 'peer-id';
 import {CID, hasher, bytes} from 'multiformats';
 import {sha256} from 'multiformats/hashes/sha2';
 import {multiaddr, Multiaddr} from 'multiaddr';
+import mime from 'mime/lite';
 // @ts-ignore (no types)
 import protons from 'protons';
 // @ts-ignore (no types)
@@ -34,7 +35,12 @@ import {
   ChannelState,
   PaymentInfo,
 } from './fsm';
-import {encodeBigInt, encodeAsBigInt} from './utils';
+import {
+  encodeBigInt,
+  encodeAsBigInt,
+  toReadableStream,
+  toTransformStream,
+} from './utils';
 import {
   SelectorNode,
   TraversalProgress,
@@ -50,6 +56,7 @@ import {
   toPathComponents,
   Node,
 } from './selectors';
+import {detectContentType} from './mimesniff';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -294,8 +301,8 @@ message Message {
 }
 `);
 
-type Metrics = {
-  dials: number[];
+type FetchInit = {
+  headers: {[key: string]: string};
 };
 
 function encodeRequest(req: TransferRequest): Uint8Array {
@@ -327,10 +334,6 @@ export class Client {
   paychMgr: PaychMgr;
   // address to use by default when paying for things
   defaultAddress: Address;
-  // metrics is a set of timing measurements recorded during requests
-  metrics: Metrics = {
-    dials: [],
-  };
   // envType declares what kind of environment the client is running in
   envType: EnvType = EnvType.ServiceWorker;
   // routing function matches content identifiers with providers
@@ -1021,5 +1024,33 @@ export class Client {
         this._loaders.delete(reqid);
       }
     }
+  }
+
+  // fetch exposes an API similar to the FetchAPI
+  async fetch(url: string, init: FetchInit): Promise<Response> {
+    const content = this.resolver(url);
+    let body =
+      this.envType === EnvType.CloudflareWorker
+        ? toTransformStream(content)
+        : toReadableStream(content);
+    const headers = init.headers;
+    const parts = url.split('.');
+    const extension = parts.length > 1 ? parts.pop() : undefined;
+    const mt = extension ? mime.getType(extension) : undefined;
+    if (mt) {
+      headers['content-type'] = mt;
+    } else {
+      const [peek, out] = body.tee();
+      const reader = peek.getReader();
+      const {value, done} = await reader.read();
+      // TODO: this may not work if the first chunk is < 512bytes.
+
+      headers['content-type'] = detectContentType(value);
+      body = out;
+    }
+    return new Response(body, {
+      status: 200,
+      headers,
+    });
   }
 }

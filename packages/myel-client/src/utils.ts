@@ -39,3 +39,24 @@ export function toReadableStream<T>(
     },
   });
 }
+
+export function toTransformStream<T>(
+  source: (AsyncIterable<T> & {return?: () => {}}) | AsyncGenerator<T, any, any>
+): ReadableStream<T> {
+  const iterator = source[Symbol.asyncIterator]();
+  const {readable, writable} = new TransformStream();
+  async function write() {
+    const writer = writable.getWriter();
+    let chunk = await iterator.next();
+
+    while (chunk.value !== null && !chunk.done) {
+      writer.write(chunk.value);
+      chunk = await iterator.next();
+    }
+    writer.close();
+  }
+  // no await since we want to return the reader and start consuming while
+  // we're still writing
+  write();
+  return readable;
+}

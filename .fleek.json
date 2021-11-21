@@ -1,8 +1,0 @@
-{
- "build": {
-   "image": "fleek/create-react-app",
-   "command": "yarn && yarn build",
-   "publicDir": "build",
-   "baseDir": "examples/react-blog-starter"
- }
-}
