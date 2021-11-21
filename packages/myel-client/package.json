@@ -1,7 +1,7 @@
 {
   "name": "myel-client",
   "description": "Typescript package for consuming content from a myel node with Libp2p",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "BSD-3-Clause",
   "main": "dist/myel-client.cjs.js",
   "module": "dist/myel-client.esm.js",

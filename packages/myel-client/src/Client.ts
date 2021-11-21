@@ -301,8 +301,8 @@ message Message {
 }
 `);
 
-type Metrics = {
-  dials: number[];
+type FetchInit = {
+  headers: {[key: string]: string};
 };
 
 function encodeRequest(req: TransferRequest): Uint8Array {
@@ -334,10 +334,6 @@ export class Client {
   paychMgr: PaychMgr;
   // address to use by default when paying for things
   defaultAddress: Address;
-  // metrics is a set of timing measurements recorded during requests
-  metrics: Metrics = {
-    dials: [],
-  };
   // envType declares what kind of environment the client is running in
   envType: EnvType = EnvType.ServiceWorker;
   // routing function matches content identifiers with providers
@@ -1031,20 +1027,19 @@ export class Client {
   }
 
   // fetch exposes an API similar to the FetchAPI
-  async fetch(url: string, init: any): Promise<Response> {
+  async fetch(url: string, init: FetchInit): Promise<Response> {
     const content = this.resolver(url);
     let body =
       this.envType === EnvType.CloudflareWorker
         ? toTransformStream(content)
         : toReadableStream(content);
     const headers = init.headers;
-    if (/\./.test(url)) {
-      const extension = url.split('.').pop();
-      if (extension && mime.getType(extension)) {
-        headers['content-type'] = mime.getType(extension);
-      }
-    }
-    if (!headers['content-type']) {
+    const parts = url.split('.');
+    const extension = parts.length > 1 ? parts.pop() : undefined;
+    const mt = extension ? mime.getType(extension) : undefined;
+    if (mt) {
+      headers['content-type'] = mt;
+    } else {
       const [peek, out] = body.tee();
       const reader = peek.getReader();
       const {value, done} = await reader.read();

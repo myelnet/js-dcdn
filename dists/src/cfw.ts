@@ -9,7 +9,6 @@ import {BN} from 'bn.js';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {KVBlockstore} from './kv-blockstore';
 import {Multiaddr} from 'multiaddr';
-// import {MemoryBlockstore} from 'interface-blockstore';
 
 declare const RECORDS: KVNamespace;
 declare const BLOCKS: KVNamespace;
@@ -21,6 +20,46 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS',
   'Access-Control-Max-Age': '86400',
 };
+
+// the runtime might be kept between requests so we use a global variable
+// to reuse the client if possible
+let client: Client | undefined;
+
+async function getOrCreateClient(): Promise<Client> {
+  if (!client) {
+    const lopts = {
+      modules: {
+        transport: [Websockets],
+        connEncryption: [new Noise()],
+        streamMuxer: [Mplex],
+      },
+      config: {
+        transport: {
+          [Websockets.prototype[Symbol.toStringTag]]: {
+            filter: filters.dnsWss,
+          },
+        },
+        // auto dial must be deactivated in this environment so we make sure to dial
+        // with the cloudflareWorker option
+        peerDiscovery: {
+          autoDial: false,
+        },
+      },
+    };
+
+    const libp2p = await Libp2p.create(lopts);
+    await libp2p.start();
+
+    const blocks = new KVBlockstore(BLOCKS);
+    client = new Client({
+      libp2p,
+      blocks,
+      rpc: new FilRPC('https://infura.myel.cloud'),
+      envType: EnvType.CloudflareWorker,
+    });
+  }
+  return client;
+}
 
 function handleOptions(request: Request) {
   // Make sure the necessary headers are present
@@ -104,38 +143,13 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   const path = url.pathname;
 
-  const lopts = {
-    modules: {
-      transport: [Websockets],
-      connEncryption: [new Noise()],
-      streamMuxer: [Mplex],
-    },
-    config: {
-      transport: {
-        [Websockets.prototype[Symbol.toStringTag]]: {
-          filter: filters.dnsWss,
-        },
-      },
-      // auto dial must be deactivated in this environment so we make sure to dial
-      // with the cloudflareWorker option
-      peerDiscovery: {
-        autoDial: false,
-      },
-    },
-  };
+  const client = await getOrCreateClient();
 
-  const libp2p = await Libp2p.create(lopts);
-  await libp2p.start();
-
-  const blocks = new KVBlockstore(BLOCKS);
-  // const blocks = new MemoryBlockstore();
-  const client = new Client({
-    libp2p,
-    blocks,
-    rpc: new FilRPC('https://infura.myel.cloud'),
-    envType: EnvType.CloudflareWorker,
-    routingFn: (root, sel) => loadOffer(root, params),
-  });
+  client.find = (root, sel) => loadOffer(root, params);
 
   return client.fetch(path, {headers: corsHeaders});
 }
+
+addEventListener('fetch', (event) => {
+  event.respondWith(handleRequest(event.request));
+});
