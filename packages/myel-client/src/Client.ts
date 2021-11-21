@@ -9,6 +9,7 @@ import PeerId from 'peer-id';
 import {CID, hasher, bytes} from 'multiformats';
 import {sha256} from 'multiformats/hashes/sha2';
 import {multiaddr, Multiaddr} from 'multiaddr';
+import mime from 'mime/lite';
 // @ts-ignore (no types)
 import protons from 'protons';
 // @ts-ignore (no types)
@@ -34,7 +35,12 @@ import {
   ChannelState,
   PaymentInfo,
 } from './fsm';
-import {encodeBigInt, encodeAsBigInt} from './utils';
+import {
+  encodeBigInt,
+  encodeAsBigInt,
+  toReadableStream,
+  toTransformStream,
+} from './utils';
 import {
   SelectorNode,
   TraversalProgress,
@@ -50,6 +56,7 @@ import {
   toPathComponents,
   Node,
 } from './selectors';
+import {detectContentType} from './mimesniff';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -1021,5 +1028,34 @@ export class Client {
         this._loaders.delete(reqid);
       }
     }
+  }
+
+  // fetch exposes an API similar to the FetchAPI
+  async fetch(url: string, init: any): Promise<Response> {
+    const content = this.resolver(url);
+    let body =
+      this.envType === EnvType.CloudflareWorker
+        ? toTransformStream(content)
+        : toReadableStream(content);
+    const headers = init.headers;
+    if (/\./.test(url)) {
+      const extension = url.split('.').pop();
+      if (extension && mime.getType(extension)) {
+        headers['content-type'] = mime.getType(extension);
+      }
+    }
+    if (!headers['content-type']) {
+      const [peek, out] = body.tee();
+      const reader = peek.getReader();
+      const {value, done} = await reader.read();
+      // TODO: this may not work if the first chunk is < 512bytes.
+
+      headers['content-type'] = detectContentType(value);
+      body = out;
+    }
+    return new Response(body, {
+      status: 200,
+      headers,
+    });
   }
 }

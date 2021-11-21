@@ -2,21 +2,11 @@ import Websockets from 'libp2p-websockets';
 import filters from 'libp2p-websockets/src/filters';
 import {Noise} from 'libp2p-noise/dist/src/noise';
 import Mplex from 'libp2p-mplex';
-import {
-  Client,
-  FilRPC,
-  DealOffer,
-  getSelector,
-  Address,
-  EnvType,
-} from 'myel-client';
+import {Client, FilRPC, DealOffer, Address, EnvType} from 'myel-client';
 import Libp2p from 'libp2p';
 import {CID} from 'multiformats';
 import {BN} from 'bn.js';
-import {decode as decodePb} from '@ipld/dag-pb';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
-import {exporter} from 'ipfs-unixfs-exporter';
-import mime from 'mime/lite';
 import {KVBlockstore} from './kv-blockstore';
 import {Multiaddr} from 'multiaddr';
 // import {MemoryBlockstore} from 'interface-blockstore';
@@ -25,11 +15,6 @@ declare const RECORDS: KVNamespace;
 declare const BLOCKS: KVNamespace;
 
 const MAX_RECORDS = 5;
-
-function toPathComponents(path = ''): string[] {
-  // split on / unless escaped with \
-  return (path.trim().match(/([^\\^/]|\\\/)+/g) || []).filter(Boolean);
-}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,42 +44,23 @@ function handleOptions(request: Request) {
   }
 }
 
-function toReadableStream<T>(
-  source: (AsyncIterable<T> & {return?: () => {}}) | AsyncGenerator<T, any, any>
-): ReadableStream<T> {
-  const iterator = source[Symbol.asyncIterator]();
-  const {readable, writable} = new TransformStream();
-  async function write() {
-    const writer = writable.getWriter();
-    let chunk = await iterator.next();
-
-    while (chunk.value !== null && !chunk.done) {
-      writer.write(chunk.value);
-      chunk = await iterator.next();
-    }
-    writer.close();
-  }
-  // no await since we want to return the reader and start consuming while
-  // we're still writing
-  write();
-  return readable;
-}
-
 async function loadOffer(
   root: CID,
   params: URLSearchParams
-): Promise<DealOffer> {
+): Promise<DealOffer[]> {
   const peer = params.get('peer');
   if (peer !== null) {
-    return {
-      id: '1',
-      peerAddr: peer,
-      cid: root,
-      size: 0,
-      minPricePerByte: new BN(0),
-      maxPaymentInterval: 1 << 20,
-      maxPaymentIntervalIncrease: 1 << 20,
-    };
+    return [
+      {
+        id: '1',
+        peerAddr: peer,
+        cid: root,
+        size: 0,
+        minPricePerByte: new BN(0),
+        maxPaymentInterval: 1 << 20,
+        maxPaymentIntervalIncrease: 1 << 20,
+      },
+    ];
   }
   const {keys} = await RECORDS.list({prefix: root.toString()});
   const results: DealOffer[] = [];
@@ -121,7 +87,7 @@ async function loadOffer(
   }
   // for now we return the first option but we can have a better
   // location based selection
-  return results[0];
+  return results;
 }
 
 export async function handleRequest(request: Request): Promise<Response> {
@@ -136,10 +102,7 @@ export async function handleRequest(request: Request): Promise<Response> {
   // a peer address may be passed as ?peer=dns4/mypeer.name/443...
   const params = url.searchParams;
 
-  const segments = toPathComponents(url.pathname);
-
-  const root = CID.parse(segments[0]);
-  const key = segments[1];
+  const path = url.pathname;
 
   const lopts = {
     modules: {
@@ -171,98 +134,8 @@ export async function handleRequest(request: Request): Promise<Response> {
     blocks,
     rpc: new FilRPC('https://infura.myel.cloud'),
     envType: EnvType.CloudflareWorker,
+    routingFn: (root, sel) => loadOffer(root, params),
   });
 
-  async function* cat(ipfsPath: string | CID, options = {}) {
-    const file = await exporter(ipfsPath, blocks, options);
-
-    // File may not have unixfs prop if small & imported with rawLeaves true
-    if (file.type === 'directory') {
-      throw new Error('this dag node is a directory');
-    }
-
-    if (!file.content) {
-      throw new Error('this dag node has no content');
-    }
-
-    yield* file.content(options);
-  }
-
-  const offer = await loadOffer(root, params);
-  if (!offer) {
-    throw new Error('content not found');
-  }
-
-  let block: Uint8Array;
-
-  try {
-    // check if we have the blocks already
-    // and immediately assign if so
-    block = await blocks.get(root);
-  } catch (e) {
-    // otherwise we load it from the offer
-    await client.loadAsync(offer, getSelector('/'));
-    block = await blocks.get(root);
-  }
-
-  let decode;
-  switch (root.code) {
-    case 0x70:
-      decode = decodePb;
-      break;
-    case 0x71:
-      decode = decodeCbor;
-      break;
-    default:
-      throw new Error('unsuported codec');
-  }
-
-  const node = decode(block);
-
-  if (!Array.isArray(node.Links)) {
-    throw new Error('no content');
-  }
-
-  // If the query isn't for a specific key return a list of all items as JSON
-  if (!key) {
-    const links = node.Links.map((l) => ({
-      name: l.Name,
-      size: l.Tsize,
-      cid: l.Hash.toString(),
-    }));
-    return new Response(JSON.stringify(links), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-      },
-    });
-  }
-  // for now we assume our node is a unixfs directory
-  for (const link of node.Links) {
-    if (key === link.Name) {
-      const has = await blocks.has(link.Hash);
-      if (!has) {
-        const noffer = {
-          ...offer,
-          cid: link.Hash,
-          size: link.Tsize ?? 0,
-        };
-        await client.loadAsync(noffer, getSelector('*'));
-      }
-      const content = cat(link.Hash);
-      const body = toReadableStream(content);
-      const headers: {[key: string]: any} = corsHeaders;
-      const extension = key.split('.').pop() as string;
-      if (extension && mime.getType(extension)) {
-        headers['Content-Type'] = mime.getType(extension);
-      }
-      // used to trigger a download instead of opening a web page
-      headers['Content-Disposition'] = 'attachment; filename="' + key + '"';
-      return new Response(body, {
-        status: 200,
-        headers,
-      });
-    }
-  }
-  return new Response('not found');
+  return client.fetch(path, {headers: corsHeaders});
 }
