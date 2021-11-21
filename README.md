@@ -28,17 +28,18 @@ if ('serviceWorker' in navigator) {
 }
 ```
 
-As a Cloudflare worker
+As a [Cloudflare worker](/dists/src/cfw.ts)
 - Make sure you have wrangler installed and a [Cloudflare workers account](https://dash.cloudflare.com/sign-up/workers)
 ```sh
 npm install -g @cloudflare/wrangler
 ```
-- Login and set your account ID in `wrangler.toml`
+- Login and set your account ID in [`wrangler.toml`](/dists/wrangler.toml)
 ```sh
 wrangler login
 ```
 - Deploy to a `*.workers.dev` subdomain
 ```sh
+cd dists
 wrangler publish
 ```
 
