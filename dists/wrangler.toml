@@ -15,3 +15,7 @@ kv_namespaces = [
 command = "yarn build"
 [build.upload]
 format = "service-worker"
+
+# [secrets]
+# PEER_PRIVKEY
+# FIL_PRIVKEY

@@ -9,9 +9,13 @@ import {BN} from 'bn.js';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {KVBlockstore} from './kv-blockstore';
 import {Multiaddr} from 'multiaddr';
+import PeerId from 'peer-id';
 
 declare const RECORDS: KVNamespace;
 declare const BLOCKS: KVNamespace;
+// secrets are encrypted
+declare const PEER_PRIVKEY: string;
+declare const FIL_PRIVKEY: string;
 
 const MAX_RECORDS = 5;
 
@@ -27,6 +31,13 @@ let client: Client | undefined;
 
 async function getOrCreateClient(): Promise<Client> {
   if (!client) {
+    let peerId: PeerId | undefined;
+    try {
+      peerId = await PeerId.createFromPrivKey(PEER_PRIVKEY);
+    } catch (e) {
+      console.log('failed to load private key');
+      peerId = undefined;
+    }
     const lopts = {
       modules: {
         transport: [Websockets],
@@ -45,6 +56,7 @@ async function getOrCreateClient(): Promise<Client> {
           autoDial: false,
         },
       },
+      peerId,
     };
 
     const libp2p = await Libp2p.create(lopts);
@@ -56,6 +68,7 @@ async function getOrCreateClient(): Promise<Client> {
       blocks,
       rpc: new FilRPC('https://infura.myel.cloud'),
       envType: EnvType.CloudflareWorker,
+      filPrivKey: FIL_PRIVKEY,
     });
   }
   return client;

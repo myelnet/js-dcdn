@@ -39,10 +39,10 @@
     "datastore-idb": "^1.1.0",
     "libp2p": "^0.33.0",
     "libp2p-mplex": "^0.10.4",
-    "libp2p-noise": "../../../js-libp2p-noise",
-    "libp2p-websockets": "../../../js-libp2p-websockets",
+    "libp2p-noise": "../../js-libp2p-noise",
+    "libp2p-websockets": "../../js-libp2p-websockets",
     "mime": "^2.5.2",
     "multiaddr": "^10.0.1",
-    "myel-client": "../../packages/myel-client"
+    "myel-client": "../packages/myel-client"
   }
 }

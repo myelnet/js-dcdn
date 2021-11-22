@@ -117,6 +117,7 @@ type ClientOptions = {
   libp2p: P2P;
   blocks: Blockstore;
   rpc: RPCProvider;
+  filPrivKey?: string;
   routingFn?: RoutingFn;
   rpcMsgTimeout?: number;
   envType?: EnvType;
@@ -369,7 +370,12 @@ export class Client {
     }
 
     this.signer = new Secp256k1Signer();
-    this.defaultAddress = this.signer.genPrivate();
+
+    if (options.filPrivKey) {
+      this.defaultAddress = this.importKey(options.filPrivKey);
+    } else {
+      this.defaultAddress = this.signer.genPrivate();
+    }
 
     this.paychMgr = new PaychMgr({
       filRPC: options.rpc,
