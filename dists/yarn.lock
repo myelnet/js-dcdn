@@ -2971,7 +2971,7 @@ it-to-stream@^1.0.0:
     p-fifo "^1.0.0"
     readable-stream "^3.6.0"
 
-it-ws@../../../it-ws:
+it-ws@../../it-ws:
   version "4.0.0"
   dependencies:
     buffer "6.0.3"
@@ -3605,7 +3605,7 @@ libp2p-mplex@^0.10.4:
     it-pushable "^1.4.1"
     varint "^6.0.0"
 
-libp2p-noise@../../../js-libp2p-noise:
+libp2p-noise@../../js-libp2p-noise:
   version "4.1.1"
   dependencies:
     "@stablelib/chacha20poly1305" "^1.0.1"
@@ -3636,7 +3636,7 @@ libp2p-utils@^0.4.0:
     multiaddr "^10.0.0"
     private-ip "^2.1.1"
 
-libp2p-websockets@../../../js-libp2p-websockets:
+libp2p-websockets@../../js-libp2p-websockets:
   version "0.16.2"
   dependencies:
     abortable-iterator "^3.0.0"
@@ -3644,7 +3644,7 @@ libp2p-websockets@../../../js-libp2p-websockets:
     debug "^4.3.1"
     err-code "^3.0.1"
     ipfs-utils "^9.0.1"
-    it-ws "../../../it-ws"
+    it-ws "../../it-ws"
     libp2p-utils "^0.4.0"
     mafmt "^10.0.0"
     multiaddr "^10.0.0"
@@ -3942,8 +3942,8 @@ mutable-proxy@^1.0.0:
   resolved "https://registry.yarnpkg.com/mutable-proxy/-/mutable-proxy-1.0.0.tgz#3c6e6f9304c2e5a4751bb65b5a66677de9bcf3c8"
   integrity sha512-4OvNRr1DJpy2QuDUV74m+BWZ//n4gG4bmd21MzDSPqHEidIDWqwyOjcadU1LBMO3vXYGurVKjfBrxrSQIHFu9A==
 
-myel-client@../../packages/myel-client:
-  version "0.1.0"
+myel-client@../packages/myel-client:
+  version "0.2.0"
   dependencies:
     "@ipld/dag-cbor" "^6.0.5"
     "@ipld/dag-pb" "^2.1.9"
