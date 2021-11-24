@@ -165,7 +165,7 @@ export class PreloadController {
       // id is used to keep track of the order of relevance
       return {
         id: String(i),
-        peerAddr: maddr.toString(),
+        peerAddr: maddr,
         cid: root,
         size: rec[2],
         minPricePerByte: new BN(0), // TODO: records do not include pricing at the moment
@@ -181,7 +181,7 @@ export class PreloadController {
   offerFromEntry(root: CID, entry: ContentEntry): DealOffer {
     return {
       id: '1',
-      peerAddr: entry.peerAddr,
+      peerAddr: new Multiaddr(entry.peerAddr),
       cid: root,
       size: entry.size,
       minPricePerByte: new BN(entry.pricePerByte),

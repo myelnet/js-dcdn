@@ -112,6 +112,7 @@ let dedupePlugin = {
     entryPoints: {
       worker: 'src/cfw.ts',
       sw: 'src/sw.ts',
+      MyelClient: 'src/client.ts',
     },
     bundle: true,
     outdir: 'dist',

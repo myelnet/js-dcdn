@@ -10,12 +10,15 @@ import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {KVBlockstore} from './kv-blockstore';
 import {Multiaddr} from 'multiaddr';
 import PeerId from 'peer-id';
+import {Buffer} from 'buffer';
+import {fromString} from 'uint8arrays/from-string';
 
 declare const RECORDS: KVNamespace;
 declare const BLOCKS: KVNamespace;
 // secrets are encrypted
 declare const PEER_PRIVKEY: string;
 declare const FIL_PRIVKEY: string;
+declare const NOISE_PRIVKEY: string;
 
 const MAX_RECORDS = 5;
 
@@ -38,10 +41,18 @@ async function getOrCreateClient(): Promise<Client> {
       console.log('failed to load private key');
       peerId = undefined;
     }
+    let noiseSeed: Buffer | undefined;
+    try {
+      const seed = fromString(NOISE_PRIVKEY, 'base64pad');
+      noiseSeed = Buffer.from(seed.buffer, seed.byteOffset, seed.length);
+    } catch (e) {
+      console.log('failed to load noise static key');
+      noiseSeed = undefined;
+    }
     const lopts = {
       modules: {
         transport: [Websockets],
-        connEncryption: [new Noise()],
+        connEncryption: [new Noise(noiseSeed)],
         streamMuxer: [Mplex],
       },
       config: {
@@ -105,7 +116,7 @@ async function loadOffer(
     return [
       {
         id: '1',
-        peerAddr: peer,
+        peerAddr: new Multiaddr(peer),
         cid: root,
         size: 0,
         minPricePerByte: new BN(0),
@@ -124,7 +135,7 @@ async function loadOffer(
       const maddr = new Multiaddr(fields[0]);
       results.push({
         id: String(id++),
-        peerAddr: maddr.toString(),
+        peerAddr: maddr,
         cid: root,
         size: fields[2],
         minPricePerByte: new BN(0),

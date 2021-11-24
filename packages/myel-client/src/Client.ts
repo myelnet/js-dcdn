@@ -125,7 +125,7 @@ type ClientOptions = {
 
 export type DealOffer = {
   id: string;
-  peerAddr: string;
+  peerAddr: Multiaddr;
   cid: CID;
   size: number;
   minPricePerByte: BigInt;
@@ -1033,7 +1033,7 @@ export class Client {
   }
 
   // fetch exposes an API similar to the FetchAPI
-  async fetch(url: string, init: FetchInit): Promise<Response> {
+  async fetch(url: string, init: FetchInit = {headers: {}}): Promise<Response> {
     const content = this.resolver(url);
     let body =
       this.envType === EnvType.CloudflareWorker

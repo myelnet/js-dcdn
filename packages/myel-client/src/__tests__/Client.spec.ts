@@ -7,6 +7,7 @@ import PeerId from 'peer-id';
 import {CID, bytes} from 'multiformats';
 import {sha256} from 'multiformats/hashes/sha2';
 import {BN} from 'bn.js';
+import {multiaddr} from 'multiaddr';
 import {
   newIDAddress,
   newActorAddress,
@@ -200,8 +201,9 @@ describe('MyelClient', () => {
 
     offers.push({
       id: '1',
-      peerAddr:
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
+      peerAddr: multiaddr(
+        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+      ),
       cid: CID.parse(
         'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
       ),
@@ -268,8 +270,9 @@ describe('MyelClient', () => {
 
     offers.push({
       id: '1',
-      peerAddr:
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
+      peerAddr: multiaddr(
+        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+      ),
       cid: CID.parse(
         'bafyreigae5sia65thtb3a73vudwi3rsxqscqnkh2mtx7jqjlq5xl72k7ba'
       ),
@@ -384,8 +387,9 @@ describe('MyelClient', () => {
 
       offers.push({
         id: '1',
-        peerAddr:
-          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
+        peerAddr: multiaddr(
+          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+        ),
         cid: CID.parse(
           'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
         ),
@@ -459,8 +463,9 @@ describe('MyelClient', () => {
 
       offers.push({
         id: '1',
-        peerAddr:
-          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
+        peerAddr: multiaddr(
+          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+        ),
         cid: CID.parse(
           'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
         ),
@@ -595,8 +600,9 @@ describe('MyelClient', () => {
 
     offers.push({
       id: '1',
-      peerAddr:
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa',
+      peerAddr: multiaddr(
+        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+      ),
       cid: CID.parse(
         'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
       ),
