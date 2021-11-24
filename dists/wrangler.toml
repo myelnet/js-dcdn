@@ -19,3 +19,4 @@ format = "service-worker"
 # [secrets]
 # PEER_PRIVKEY
 # FIL_PRIVKEY
+# NOISE_PRIVKEY
