@@ -149,7 +149,7 @@ describe('MyelClient', () => {
     // we can resolve the entries
     const dir = client.resolver('/' + cid?.toString());
     for await (const value of dir) {
-      expect(JSON.parse(value)).toEqual(entries);
+      expect(JSON.parse(new TextDecoder().decode(value))).toEqual(entries);
     }
 
     // we can resolve the first entry
