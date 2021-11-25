@@ -7,7 +7,10 @@ import {PBLink} from '@ipld/dag-pb';
 import BufferList from 'bl/BufferList';
 import PeerId from 'peer-id';
 import {CID, hasher, bytes} from 'multiformats';
+import {from as hasherFrom} from 'multiformats/hashes/hasher';
+import {Block} from 'multiformats/block';
 import {sha256} from 'multiformats/hashes/sha2';
+import * as dagJSON from 'multiformats/codecs/json';
 import {multiaddr, Multiaddr} from 'multiaddr';
 import mime from 'mime/lite';
 // @ts-ignore (no types)
@@ -15,12 +18,10 @@ import protons from 'protons';
 // @ts-ignore (no types)
 import vd from 'varint-decoder';
 import blakejs from 'blakejs';
-import {from as hasherFrom} from 'multiformats/hashes/hasher';
-import {Block} from 'multiformats/block';
 import {UnixFS} from 'ipfs-unixfs';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
-import {Address} from './filaddress';
+import {Address, concat as concatUint8Arrays} from './filaddress';
 import {MemoryBlockstore, Blockstore} from 'interface-blockstore';
 
 import {RPCProvider} from './FilRPC';
@@ -972,7 +973,7 @@ export class Client {
               throw new Error('key not found: ' + segs[0]);
             } else {
               // if the block is a directory and we have no key return the entries as JSON
-              yield JSON.stringify(
+              yield dagJSON.encode(
                 blk.value.Links.map((l: PBLink) => ({
                   name: l.Name,
                   hash: l.Hash.toString(),
@@ -1048,10 +1049,19 @@ export class Client {
     } else {
       const [peek, out] = body.tee();
       const reader = peek.getReader();
-      const {value, done} = await reader.read();
-      // TODO: this may not work if the first chunk is < 512bytes.
+      let head = new Uint8Array(0);
 
-      headers['content-type'] = detectContentType(value);
+      while (head.length < 512) {
+        const {value, done} = await reader.read();
+        if (value) {
+          head = concatUint8Arrays([head, value], head.length + value.length);
+        }
+        if (done) {
+          break;
+        }
+      }
+
+      headers['content-type'] = detectContentType(head);
       body = out;
     }
     return new Response(body, {
