@@ -119,6 +119,7 @@ let dedupePlugin = {
     plugins: [dedupePlugin],
     metafile: true,
     minify: true,
+    legalComments: 'none',
   });
 
   const text = await esbuild.analyzeMetafile(result.metafile, {

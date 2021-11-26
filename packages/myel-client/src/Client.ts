@@ -36,12 +36,7 @@ import {
   ChannelState,
   PaymentInfo,
 } from './fsm';
-import {
-  encodeBigInt,
-  encodeAsBigInt,
-  toReadableStream,
-  toTransformStream,
-} from './utils';
+import {encodeBigInt, encodeAsBigInt} from './utils';
 import {
   SelectorNode,
   TraversalProgress,
@@ -932,7 +927,7 @@ export class Client {
    */
   async *resolver(path: string): AsyncIterable<any> {
     const comps = toPathComponents(path);
-    const root = CID.parse(comps[0]);
+    let root = CID.parse(comps[0]);
     let cid = root;
     let segs = comps.slice(1);
     let isLast = false;
@@ -1036,37 +1031,56 @@ export class Client {
   // fetch exposes an API similar to the FetchAPI
   async fetch(url: string, init: FetchInit = {headers: {}}): Promise<Response> {
     const content = this.resolver(url);
-    let body =
-      this.envType === EnvType.CloudflareWorker
-        ? toTransformStream(content)
-        : toReadableStream(content);
+    const iterator = content[Symbol.asyncIterator]();
     const headers = init.headers;
-    const parts = url.split('.');
-    const extension = parts.length > 1 ? parts.pop() : undefined;
-    const mt = extension ? mime.getType(extension) : undefined;
-    if (mt) {
-      headers['content-type'] = mt;
-    } else {
-      const [peek, out] = body.tee();
-      const reader = peek.getReader();
-      let head = new Uint8Array(0);
 
-      while (head.length < 512) {
-        const {value, done} = await reader.read();
-        if (value) {
-          head = concatUint8Arrays([head, value], head.length + value.length);
+    try {
+      // wait for the first bytes to send the response
+      let {value, done} = await iterator.next();
+
+      let head = value;
+
+      const parts = url.split('.');
+      const extension = parts.length > 1 ? parts.pop() : undefined;
+      const mt = extension ? mime.getType(extension) : undefined;
+      if (mt) {
+        headers['content-type'] = mt;
+      } else {
+        while (head.length < 512 && !done) {
+          ({value, done} = await iterator.next());
+          if (value) {
+            head = concatUint8Arrays([head, value], head.length + value.length);
+          }
         }
-        if (done) {
-          break;
-        }
+        headers['content-type'] = detectContentType(head);
       }
 
-      headers['content-type'] = detectContentType(head);
-      body = out;
+      const {readable, writable} = new TransformStream();
+      async function write() {
+        const writer = writable.getWriter();
+        writer.write(head);
+        try {
+          let chunk = await iterator.next();
+
+          while (chunk.value !== null && !chunk.done) {
+            writer.write(chunk.value);
+            chunk = await iterator.next();
+          }
+          writer.close();
+        } catch (e) {
+          writer.abort(e.message);
+        }
+      }
+      write();
+      return new Response(readable, {
+        status: 200,
+        headers,
+      });
+    } catch (e) {
+      return new Response(e.message, {
+        status: 500,
+        headers,
+      });
     }
-    return new Response(body, {
-      status: 200,
-      headers,
-    });
   }
 }

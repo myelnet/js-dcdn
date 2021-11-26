@@ -21,7 +21,6 @@ import crypto from 'crypto';
 import {pipe} from 'it-pipe';
 import drain from 'it-drain';
 import {importer} from 'ipfs-unixfs-importer';
-import {toReadableStream} from '../utils';
 
 global.crypto = {
   subtle: {
@@ -30,6 +29,7 @@ global.crypto = {
       crypto.createHash('sha256').update(data).digest(),
   },
 };
+
 async function* gsTwoBlocks(): AsyncIterable<Uint8Array> {
   yield fix.gsMsg1;
   yield fix.gsMsg2;
