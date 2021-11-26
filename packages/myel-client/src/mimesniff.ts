@@ -113,6 +113,34 @@ class htmlSig {
   }
 }
 
+// Does not follow the official specs but useful anyways for displaying image instead of markup
+class svgSig {
+  h = Buffer.from('<svg');
+  match(data: Uint8Array, firstNonWS: number) {
+    data = data.slice(firstNonWS);
+    if (data.length < this.h.length + 1) {
+      return '';
+    }
+
+    for (let i = 0; i < this.h.length; i++) {
+      let b = this.h[i];
+      let db = data[i];
+      if ('A'.charCodeAt(0) <= b && b <= 'Z'.charCodeAt(0)) {
+        db &= 0xdf;
+      }
+      if (b != db) {
+        return '';
+      }
+    }
+    // Next byte must be space or right angle bracket.
+    let db = String.fromCharCode(data[this.h.length]);
+    if (db != ' ' && db != '>') {
+      return '';
+    }
+    return 'image/svg+xml';
+  }
+}
+
 let mp4ftype = Buffer.from('ftyp');
 let mp4 = Buffer.from('mp4');
 
@@ -179,6 +207,8 @@ const sniffSignatures = [
   new htmlSig('<BR'),
   new htmlSig('<P'),
   new htmlSig('<!--'),
+
+  new svgSig(),
 
   new maskedSig(
     Buffer.from([0xff, 0xff, 0xff, 0xff, 0xff]),
