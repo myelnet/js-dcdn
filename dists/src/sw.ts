@@ -2,7 +2,7 @@ import Websockets from 'libp2p-websockets';
 import filters from 'libp2p-websockets/src/filters';
 import {Noise} from 'libp2p-noise/dist/src/noise';
 import Mplex from 'libp2p-mplex';
-import {PreloadController, CacheDatastore} from 'myel-client';
+import {PreloadController, CacheBlockstore} from 'myel-client';
 
 function shuffle<T>(input: T[]): T[] {
   const array = [...input];
@@ -29,7 +29,7 @@ const controller = new PreloadController({
     },
   },
   routingUrl: '/routing',
-  datastore: new CacheDatastore('/myel-client/blocks'),
+  blocks: new CacheBlockstore('/myel-client/blocks'),
   rankOffersFn: shuffle,
 });
 controller.preload([]);

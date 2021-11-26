@@ -103,6 +103,7 @@ export class PreloadController {
         blocks = new BlockstoreAdapter(ds);
       } else if (this._options.blocks) {
         blocks = this._options.blocks;
+        await blocks.open();
       }
 
       const libp2p = await Libp2p.create(this._options);

@@ -6,14 +6,7 @@ import {create} from 'libp2p';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {Multiaddr} from 'multiaddr';
 import {BN} from 'bn.js';
-import {
-  Client,
-  CacheDatastore,
-  BlockstoreAdapter,
-  FilRPC,
-  DealOffer,
-  Address,
-} from 'myel-client';
+import {Client, CacheBlockstore, FilRPC, DealOffer, Address} from 'myel-client';
 import {fromString} from 'uint8arrays/from-string';
 import {Buffer} from 'buffer';
 
@@ -61,9 +54,8 @@ async function getOffer(root, sel): Promise<DealOffer[]> {
       Buffer.from(secretKey.buffer, secretKey.byteOffset, secretKey.length)
     );
 
-    const ds = new CacheDatastore('/myel-client/blocks');
-    await ds.open();
-    const blocks = new BlockstoreAdapter(ds);
+    const blocks = new CacheBlockstore('/myel-client/blocks');
+    await blocks.open();
 
     const libp2p = await create({
       modules: {
