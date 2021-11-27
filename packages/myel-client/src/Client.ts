@@ -117,6 +117,7 @@ type ClientOptions = {
   routingFn?: RoutingFn;
   rpcMsgTimeout?: number;
   envType?: EnvType;
+  debug?: boolean;
 };
 
 export type DealOffer = {
@@ -335,6 +336,8 @@ export class Client {
   envType: EnvType = EnvType.ServiceWorker;
   // routing function matches content identifiers with providers
   find?: RoutingFn;
+  // debug adds some convenient logs when debugging reducing performance
+  debug = false;
 
   // graphsync request id. doesn't need be unique between clients.
   _reqId: number = 0;
@@ -387,6 +390,16 @@ export class Client {
     this.libp2p.handle(DT_PROTOCOL, this._onDataTransferConn.bind(this));
 
     this._interceptBlocks = this._interceptBlocks.bind(this);
+
+    if (options.debug) {
+      this.debug = true;
+    }
+  }
+
+  log(...params: any[]): void {
+    if (this.debug) {
+      console.log(...params);
+    }
   }
 
   _newRequest(
@@ -469,7 +482,7 @@ export class Client {
       }
     );
     ch.subscribe((state) => {
-      console.log('==>', state.value);
+      this.log('==>', state.value);
       const ls = this._listeners.get(state.value);
       if (ls) {
         ls.forEach((cb) => cb(state));
@@ -480,10 +493,7 @@ export class Client {
   }
 
   _processTransferMessage = (data: Uint8Array) => {
-    console.log('processing dt message');
     const dtres: TransferMessage = decode(data);
-
-    // console.log('new data transfer message', dtres);
 
     const res = dtres.Response;
     if (!res) {
@@ -520,7 +530,7 @@ export class Client {
           break;
         default:
           // channel.callback(new Error('transfer failed'), channel.state);
-          console.log('unexpected status', response.Status);
+          this.log('unexpected status', response.Status);
       }
     }
     // if response is not accepted, voucher revalidation failed
@@ -548,7 +558,7 @@ export class Client {
   };
 
   async _loadFunds(id: number) {
-    console.log('loading funds with address', this.defaultAddress.toString());
+    this.log('loading funds with address', this.defaultAddress.toString());
     const {context} = this.getChannelState(id);
     try {
       if (!context.providerPaymentAddress) {
@@ -564,7 +574,7 @@ export class Client {
       );
       // will allocate a new lane if the channel was just created or loaded from chain
       const lane = this.paychMgr.getLane(chAddr);
-      console.log('loaded channel', chAddr.toString(), 'with lane', lane);
+      this.log('loaded channel', chAddr.toString(), 'with lane', lane);
       this.updateChannel(id, {
         type: 'PAYCH_READY',
         paymentInfo: {
@@ -573,7 +583,7 @@ export class Client {
         },
       });
     } catch (e) {
-      console.log('failed to load channel', e);
+      this.log('failed to load channel', e);
       this.updateChannel(id, {
         type: 'PAYCH_FAILED',
         error: e.message,
@@ -601,7 +611,7 @@ export class Client {
         throw new Error('could not process payment: no payment info');
       }
 
-      console.log('owed', amt.toNumber());
+      this.log('owed', amt.toNumber());
       const {voucher, shortfall} = await this.paychMgr.createVoucher(
         context.paymentInfo.chAddr,
         amt,
@@ -626,7 +636,7 @@ export class Client {
         amt,
       });
     } catch (e) {
-      console.log('payment failed', e);
+      this.log('payment failed', e);
       this.updateChannel(id, {
         type: 'PAYMENT_FAILED',
         error: e.message,
@@ -652,7 +662,7 @@ export class Client {
       const bytes = gsMsg.Message.encode(msg);
       await pipe([bytes], lp.encode(), stream);
     } catch (e) {
-      console.log(e);
+      this.log(e);
     }
   }
 
@@ -669,7 +679,7 @@ export class Client {
       });
       await pipe([bytes], stream);
     } catch (e) {
-      console.log(e);
+      this.log(e);
     }
   }
 
@@ -683,7 +693,7 @@ export class Client {
         this._readGsStatus
       );
     } catch (e) {
-      console.log(e);
+      this.log(e);
     }
   }
 
@@ -693,7 +703,6 @@ export class Client {
   ): AsyncIterable<GraphsyncResponse> {
     for await (const chunk of source) {
       const msg: GraphsyncMessage = await gsMsg.Message.decode(chunk.slice());
-      // console.log('new graphsync msg', msg);
       // extract blocks from graphsync messages
       const blocks: {[key: string]: Block<any>} = (
         await Promise.all((msg.data || []).map(this._decodeBlock))
@@ -771,7 +780,7 @@ export class Client {
       const bl = await pipe(stream, this._itConcat);
       this._processTransferMessage(bl.slice());
     } catch (e) {
-      console.log(e);
+      this.log(e);
     }
   }
 
@@ -795,7 +804,7 @@ export class Client {
     if (!ch) {
       throw ErrChannelNotFound;
     }
-    console.log('sending event', event, 'to channel', id);
+    this.log('sending event', event, 'to channel', id);
     ch.send(event);
   }
 
@@ -859,7 +868,7 @@ export class Client {
       return loader.load(cid);
     }
     // if we don't create a new request
-    console.log('no loader found, init new transfer', reqId);
+    this.log('no loader found, init new transfer', reqId);
     // immediately create an async loader. subsequent requests for the same dag
     // will be routed to the same loader.
     loader = new AsyncLoader(this.blocks, (blk: Block<any>) =>
