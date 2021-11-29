@@ -47,8 +47,8 @@ You can list all the content your pop is caching by running `pop list`.
 
 Content can be directly uploaded and replicated from [CAR](https://ipld.io/specs/transport/car/) files. The CAR format (Content Addressable aRchives) can be used to store content addressable objects in the form of IPLD block data as a sequence of bytes; typically in a file with a `.car `filename extension.
 
-This can be done using the `pop import` command. This command functions in a similar fashion to `pop commit`.
-For instance, you can specify a replication factor and specific peers to replicate to when loading a CAR file:
+You can load such a file using the `pop import` command. This command functions in a similar fashion to `pop commit`.
+For instance, you can specify a replication factor and specific peers to replicate to:
 
 ```bash
 $ pop import -cache-rf=2 -peers=12D3KooWLrxNfRYjCDnzAAsz65MRuB3HhKvqMZYmvxKPFtxSBjRm my-car-file.car
