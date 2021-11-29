@@ -21,4 +21,4 @@ As the node runs for a while, clients will start dispatching new content to your
 
 ## Node repo
 
-When starting for the first time, the node creates a directory for storing all content situated at `~/.pop`. If you delete this directory you will lose all your data including your private keys. Do not do that unless you have a good reason.
+When starting for the first time, the node creates a directory for storing all content situated at `~/.pop`. If you delete this directory you will lose all your data including your private keys. Proceed with caution when interacting with this folder. 

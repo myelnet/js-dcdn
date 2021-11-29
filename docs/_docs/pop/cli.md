@@ -3,7 +3,7 @@ title: CLI
 description: API reference for the command line interface.
 ---
 
-This API may change often until we get to v1. You can run `pop -h` to print the most up to date available commands.
+This API may change often until we get to a first full release. You can run `pop -h` to print the most up to date available commands.
 
 ## `start`
 
@@ -13,21 +13,24 @@ For a full list of flags run `pop start -h`.
 
 ## `ping <peer-id or miner-id>`
 
-Running `ping` alone will get results from the local running pop node. You can ping any peer
-to verify connectivity, measure latency or check the node version.
+Running `ping` alone will get results from the local running pop node, such as which peers your local node is connected to.
+You can ping any peer to verify connectivity, measure latency or check the node version you are running.
 
 ## `put <path>`
 
 Put a file into a work DAG. The DAG is a key-value map in which keys are the name of the file.
-Files are chunked into a UnixFS DAG with raw nodes and blake2 hashing function.
-It is also possible to use the path to a directory however all files will be flattened into the key-value map.
+Files are chunked into a UnixFS DAG with raw nodes and blake2 hashing function. It is also possible to use the path to a directory however all files will be flattened into the key-value map.
 
 > `put` can be called multiple times to add more content into a DAG until it is committed.
 
 ## `commit`
 
-Commit a workdag for caching. The command fails if there is not content in the workdag so use `put` first to add content.
+Commit a workdag for caching. The command fails if there is currently no content in the work DAG so use `put` first to add content.
 The command will print the resulting root CID.
+
+## `import`
+
+Import a [CAR](https://ipld.io/specs/transport/car/) file for caching. The command will print the resulting root CID.
 
 ## `list`
 

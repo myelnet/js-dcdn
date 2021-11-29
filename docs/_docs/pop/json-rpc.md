@@ -11,4 +11,4 @@ JSON RPC methods are not available on the public gateway yet and will require so
 
 Ensures content is loaded in the pop node cache. This can be used before fetching via HTTP. If the content is not available in the local store, the node will pay to retrieve the content from the network. A max price per byte value can be used and will default to the pop max ppb global value.
 
-The method will subscribe to events sending messages with status update about the data transfer.
+The method will subscribe to events sending messages with status updates about the data transfer.
