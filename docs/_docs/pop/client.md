@@ -70,4 +70,4 @@ $ pop get bafy2bzacebyfxk42t542l4h7e7fs4m5mgxhvuc4tq4g7v7p6bhirl6kog2mfc/MyFile.
 
 This will transfer the file from any provider node that has the file and write it to disk. If no path is given, the content will be cached and can be exported to disk subsequently.
 
-Transfesr will start automatically once a provider with the content is discovered. To protect from overcharging, a default max price per byte of 5attoFIL (0.000000000000000005FIL) is set. This sets the maximum price you are willing to pay for a retrieval: no deal over this price will be accepted. If no deals are available at this price, you can increase the value with the flag `-maxppb=10` (attoFIL).
+Transfers will start automatically once a provider with the content is discovered. To protect from overcharging, a default max price per byte of 5attoFIL (0.000000000000000005FIL) is set. This sets the maximum price you are willing to pay for a retrieval: no deal over this price will be accepted. If no deals are available at this price, you can increase the value with the flag `-maxppb=10` (attoFIL).

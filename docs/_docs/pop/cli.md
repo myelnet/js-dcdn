@@ -7,9 +7,7 @@ This API may change often until we get to a first full release. You can run `pop
 
 ## `start`
 
-Running `start` on its own will open an interactive prompt to provide the required settings.
-All the settings can be set via flag or a JSON config file situated in `.pop/PopConfig.json`.
-For a full list of flags run `pop start -h`.
+Starts a pop node. All the settings can be set via flags. For a full list of flags run `pop start -h`.
 
 ## `ping <peer-id or miner-id>`
 
