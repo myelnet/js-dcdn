@@ -5,3 +5,4 @@ export {BlockstoreAdapter, cidToKey} from './BlockstoreAdapter';
 export {CacheBlockstore} from './CacheBlockstore';
 export {getSelector} from './selectors';
 export * from './filaddress';
+export {ContentRouting, FetchRecordLoader} from './routing';

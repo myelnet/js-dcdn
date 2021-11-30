@@ -1,6 +1,6 @@
 import {MemoryBlockstore} from 'interface-blockstore';
 import {encode} from 'multiformats/block';
-import {Client, DT_EXTENSION, DealOffer} from '../Client';
+import {Client, DT_EXTENSION} from '../Client';
 import {allSelector, entriesSelector} from '../selectors';
 import {MockRPCProvider, MockLibp2p} from './utils';
 import PeerId from 'peer-id';
@@ -21,6 +21,7 @@ import crypto from 'crypto';
 import {pipe} from 'it-pipe';
 import drain from 'it-drain';
 import {importer} from 'ipfs-unixfs-importer';
+import {DealOffer} from '../routing';
 
 global.crypto = {
   subtle: {
@@ -44,6 +45,24 @@ async function* gs2ndBlock(): AsyncIterable<Uint8Array> {
   yield fix.gsMsg2;
 }
 
+class MockRouting {
+  cache: Map<string, DealOffer[]> = new Map();
+  async provide(cid: CID, offer: DealOffer) {
+    const offers = this.cache.get(cid.toString()) ?? [];
+    this.cache.set(cid.toString(), [offer, ...offers]);
+  }
+
+  async *findProviders(cid: CID, options?: any) {
+    const offers = this.cache.get(cid.toString());
+    if (!offers) {
+      throw new Error('offers not found');
+    }
+    for (const offer of offers) {
+      yield offer;
+    }
+  }
+}
+
 describe('MyelClient', () => {
   test('cbor resolver', async () => {
     const rpc = new MockRPCProvider();
@@ -57,6 +76,7 @@ describe('MyelClient', () => {
       rpc,
       blocks: bs,
       libp2p,
+      routing: new MockRouting(),
     });
 
     const child = await encode({
@@ -101,6 +121,7 @@ describe('MyelClient', () => {
       rpc,
       blocks: bs,
       libp2p,
+      routing: new MockRouting(),
     });
 
     const first = new Uint8Array(5 * 256);
@@ -190,16 +211,16 @@ describe('MyelClient', () => {
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
       )
     );
-    const offers: DealOffer[] = [];
+    const routing = new MockRouting();
     const client = new Client({
       rpc,
       blocks,
       libp2p,
-      routingFn: async (k: CID) => offers,
+      routing,
     });
     client._dealId = 1627988723469;
 
-    offers.push({
+    const offer = {
       id: '1',
       peerAddr: multiaddr(
         '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
@@ -212,9 +233,10 @@ describe('MyelClient', () => {
       minPricePerByte: new BN(0),
       maxPaymentInterval: 0,
       maxPaymentIntervalIncrease: 0,
-    });
+    };
+    routing.provide(offer.cid, offer);
 
-    const root = offers[0].cid;
+    const root = offer.cid;
 
     const onTransferStart = () => {
       return new Promise((resolve) => {
@@ -241,10 +263,7 @@ describe('MyelClient', () => {
       drain(client.resolve(root, root, allSelector)),
     ]);
 
-    const {state} = await client.getChannelForParams(
-      offers[0].cid,
-      allSelector
-    );
+    const {state} = await client.getChannelForParams(offer.cid, allSelector);
 
     expect(state.matches('completed')).toBe(true);
     expect(state.context.received).toBe(1214);
@@ -259,16 +278,16 @@ describe('MyelClient', () => {
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
       )
     );
-    const offers: DealOffer[] = [];
+    const routing = new MockRouting();
     const client = new Client({
       rpc,
       blocks,
       libp2p,
-      routingFn: async (k: CID) => offers,
+      routing,
     });
     client._dealId = 1630453456080;
 
-    offers.push({
+    const offer = {
       id: '1',
       peerAddr: multiaddr(
         '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
@@ -281,7 +300,8 @@ describe('MyelClient', () => {
       minPricePerByte: new BN(0),
       maxPaymentInterval: 0,
       maxPaymentIntervalIncrease: 0,
-    });
+    };
+    routing.provide(offer.cid, offer);
 
     const ppid = PeerId.createFromB58String(
       '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
@@ -305,16 +325,13 @@ describe('MyelClient', () => {
       });
     };
 
-    const root = offers[0].cid;
+    const root = offer.cid;
 
     await Promise.all([
       onTransferStart(),
       drain(client.resolve(root, root, entriesSelector)),
     ]);
-    const {state} = await client.getChannelForParams(
-      offers[0].cid,
-      entriesSelector
-    );
+    const {state} = await client.getChannelForParams(root, entriesSelector);
 
     expect(state.matches('completed')).toBe(true);
     expect(state.context.received).toBe(326);
@@ -374,18 +391,18 @@ describe('MyelClient', () => {
       [0, 'completed'],
     ])('whith timeout %i', async (timeout, endstate) => {
       const blocks = new MemoryBlockstore();
+      const routing = new MockRouting();
       // start a new client each time as we're using the same request id
-      const offers: DealOffer[] = [];
       const client = new Client({
         rpc,
         blocks,
         libp2p,
         rpcMsgTimeout: timeout,
-        routingFn: async (k: CID) => offers,
+        routing,
       });
       client._dealId = 1627988723469;
 
-      offers.push({
+      const offer = {
         id: '1',
         peerAddr: multiaddr(
           '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
@@ -398,7 +415,8 @@ describe('MyelClient', () => {
         minPricePerByte: new BN(1),
         maxPaymentInterval: 1 << 20,
         maxPaymentIntervalIncrease: 1 << 20,
-      });
+      };
+      routing.provide(offer.cid, offer);
 
       client.on('waitForAcceptance', (state) => {
         if (state.context.received === 0) {
@@ -439,7 +457,7 @@ describe('MyelClient', () => {
         });
       };
 
-      const root = offers[0].cid;
+      const root = offer.cid;
 
       const result = await Promise.all([
         onCompleted(),
@@ -451,17 +469,17 @@ describe('MyelClient', () => {
 
     test('immediate payment request', async () => {
       const blocks = new MemoryBlockstore();
-      const offers: DealOffer[] = [];
+      const routing = new MockRouting();
       const client = new Client({
         rpc,
         blocks,
         libp2p,
         rpcMsgTimeout: 300,
-        routingFn: async (k: CID) => offers,
+        routing,
       });
       client._dealId = 1627988723469;
 
-      offers.push({
+      const offer = {
         id: '1',
         peerAddr: multiaddr(
           '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
@@ -474,7 +492,8 @@ describe('MyelClient', () => {
         minPricePerByte: new BN(1),
         maxPaymentInterval: 1 << 20,
         maxPaymentIntervalIncrease: 1 << 20,
-      });
+      };
+      routing.provide(offer.cid, offer);
 
       client.on('waitForAcceptance', (state) => {
         if (state.context.received === 0) {
@@ -504,7 +523,7 @@ describe('MyelClient', () => {
         }
       });
 
-      const root = offers[0].cid;
+      const root = offer.cid;
 
       await drain(client.resolve(root, root, allSelector));
 
@@ -588,17 +607,17 @@ describe('MyelClient', () => {
       '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
     );
 
-    const offers: DealOffer[] = [];
+    const routing = new MockRouting();
     const client = new Client({
       rpc,
       blocks,
       libp2p,
       rpcMsgTimeout: 0, // no important since this transfer shouldn't require onchain messages
-      routingFn: async (k: CID) => offers,
+      routing,
     });
     client._dealId = 1627988723469;
 
-    offers.push({
+    const offer = {
       id: '1',
       peerAddr: multiaddr(
         '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
@@ -614,7 +633,8 @@ describe('MyelClient', () => {
       paymentChannel: decodeFilAddress(
         'f2kg3awbapuij6zbory6zlvpd5ob6dhqrzlr2ekgq'
       ),
-    });
+    };
+    routing.provide(offer.cid, offer);
 
     client.on('waitForAcceptance', (state) => {
       if (state.context.received === 0) {
@@ -658,7 +678,7 @@ describe('MyelClient', () => {
         });
       });
     };
-    const root = offers[0].cid;
+    const root = offer.cid;
     const result = await Promise.all([
       onCompleted(),
       drain(client.resolve(root, root, allSelector)),

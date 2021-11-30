@@ -53,6 +53,12 @@ import {
   Node,
 } from './selectors';
 import {detectContentType} from './mimesniff';
+import {
+  DealOffer,
+  ContentRouting,
+  ContentRoutingInterface,
+  FetchRecordLoader,
+} from './routing';
 
 const HEY_PROTOCOL = '/myel/pop/hey/1.0';
 
@@ -105,32 +111,15 @@ export enum EnvType {
   CloudflareWorker,
 }
 
-// RoutingFn matches a root CID with a retrieval offer indicating the conditions under which
-// the given DAG can be retrieved. If no selector is passed we assume the whole DAG is needed.
-type RoutingFn = (root: CID, sel?: SelectorNode) => Promise<DealOffer[]>;
-
 type ClientOptions = {
   libp2p: P2P;
   blocks: Blockstore;
   rpc: RPCProvider;
   filPrivKey?: string;
-  routingFn?: RoutingFn;
+  routing?: ContentRoutingInterface;
   rpcMsgTimeout?: number;
   envType?: EnvType;
   debug?: boolean;
-};
-
-export type DealOffer = {
-  id: string;
-  peerAddr: Multiaddr;
-  cid: CID;
-  size: number;
-  minPricePerByte: BigInt;
-  maxPaymentInterval: number;
-  maxPaymentIntervalIncrease: number;
-  paymentAddress?: Address;
-  unsealPrice?: BigInt;
-  paymentChannel?: Address;
 };
 
 enum DealStatus {
@@ -335,7 +324,7 @@ export class Client {
   // envType declares what kind of environment the client is running in
   envType: EnvType = EnvType.ServiceWorker;
   // routing function matches content identifiers with providers
-  find?: RoutingFn;
+  routing: ContentRoutingInterface;
   // debug adds some convenient logs when debugging reducing performance
   debug = false;
 
@@ -382,7 +371,11 @@ export class Client {
       msgTimeout: options.rpcMsgTimeout,
     });
 
-    this.find = options.routingFn;
+    this.routing =
+      options.routing ??
+      new ContentRouting({
+        loader: new FetchRecordLoader('https://routing.myel.workers.dev'),
+      });
 
     // handle all graphsync connections
     this.libp2p.handle(GS_PROTOCOL, this._onGraphsyncConn.bind(this));
@@ -880,15 +873,17 @@ export class Client {
     this._reqidByCID.set(key, reqId);
     this._loaders.set(reqId, loader);
 
-    if (!this.find) {
-      throw new Error('client has no routing setup');
-    }
+    const offers = this.routing
+      .findProviders(root, {selector: sel})
+      [Symbol.asyncIterator]();
 
-    const offers = await this.find(root, sel);
-    if (offers.length === 0) {
+    let offer;
+    try {
+      ({value: offer} = await offers.next());
+    } catch (e) {
       throw new Error('routing: not found');
     }
-    const offer = offers[0];
+
     const {id: from, multiaddrs} = getPeer(offer.peerAddr);
     if (multiaddrs) {
       this.libp2p.peerStore.addressBook.add(from, multiaddrs);
@@ -931,14 +926,22 @@ export class Client {
     return loader.load(cid);
   }
 
+  parsePath(path: string): {root: CID; segments: string[]} {
+    const comps = toPathComponents(path);
+    const root = CID.parse(comps[0]);
+    return {
+      segments: comps,
+      root,
+    };
+  }
+
   /**
    * resolve content from a DAG using a path. May execute multiple data transfers to obtain the required blocks.
    */
   async *resolver(path: string): AsyncIterable<any> {
-    const comps = toPathComponents(path);
-    let root = CID.parse(comps[0]);
+    const {segments, root} = this.parsePath(path);
     let cid = root;
-    let segs = comps.slice(1);
+    let segs = segments.slice(1);
     let isLast = false;
 
     do {
