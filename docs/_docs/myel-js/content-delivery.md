@@ -1,5 +1,5 @@
 ---
-title: Basic usage
+title: Static Content Delivery
 description: How to fetch content from Myel Points of Presense.
 ---
 

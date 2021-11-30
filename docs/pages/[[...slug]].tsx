@@ -6,11 +6,11 @@ import Layout from '../components/Layout';
 
 const menus: {[key: string]: any} = {
   'myel-js': [
+    [{title: 'Getting Started', slug: '/getting-started'}],
     [
-      {title: 'Getting Started', slug: '/getting-started'},
-      {title: 'Roadmap', slug: '/roadmap'},
+      {title: 'Static Content Delivery', slug: '/content-delivery'},
+      {title: 'Video Streaming', slug: '/video-streaming'},
     ],
-    [{title: 'Content Delivery', slug: '/content-delivery'}],
     [
       {title: 'Client', slug: '/client'},
       {title: 'PreloadController', slug: '/preload-controller'},
