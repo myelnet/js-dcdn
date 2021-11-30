@@ -10,13 +10,10 @@ const menus: {[key: string]: any} = {
       {title: 'Getting Started', slug: '/getting-started'},
       {title: 'Roadmap', slug: '/roadmap'},
     ],
+    [{title: 'Content Delivery', slug: '/content-delivery'}],
     [
-      {title: 'Upload and Store', slug: '/upload-store'},
-      {title: 'Content Delivery', slug: '/content-delivery'},
-    ],
-    [
-      {title: 'Cache Transactions', slug: '/cache-transactions'},
-      {title: 'Storage', slug: '/storage'},
+      {title: 'Client', slug: '/client'},
+      {title: 'PreloadController', slug: '/preload-controller'},
     ],
   ],
   pop: [

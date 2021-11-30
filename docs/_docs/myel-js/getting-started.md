@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Integrate the Filecoin and IPFS into your application with the Myel CDN.
+description: Load content from Myel POPs directly from your web application.
 ---
 
 Welcome to the Myel documentation
@@ -16,12 +16,11 @@ If you're new to IPFS we recommend that you start with the [IPFS basics](https:/
 To add myel.js into your project run with the package manager of your choice:
 
 ```bash
-npm install myel-http-client
+npm install myel-client
 # or
-yarn add myel-http-client
+yarn add myel-client
 ```
 
-Myel.js wraps HTTP and JSON RPC requests to the Myel gateway available at `https://myel.cloud`. For best performance we encourage you to run your own Myel node either locally or on a dedicated server. If running locally a gateway will be available at `http://localhost:2001`.
-
-
+The client does not yet support chunking and pushing content to the network. We recommend using the [POP CLI](/pop)
+to chunk and replicate the content when deploying your application.
 
