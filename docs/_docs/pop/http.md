@@ -4,9 +4,8 @@ description: Post and get content from a Myel node with the HTTP gateway.
 ---
 
 pop nodes expose an HTTP gateway endpoint on port `2001`. This can be used to upload content from a local web page.
-It is recommended to use the [myel-http-client](/myel-js/getting-started) for better developer experience.
 
-The gateway supports the `POST` and `GET` method to upload and fetch content cached by the node. Developers can run their own node or use the public gateway available at `https://myel.cloud`.
+The gateway supports the `POST` and `GET` method to upload and fetch content cached by the node. Developers can run their own node or use the public gateway available at `https://ohio.myel.zone` for US and `https://frankfurt.myel.zone` for Europe.
 
 ## `POST /`
 
