@@ -31,7 +31,6 @@ const menus: {[key: string]: any} = {
     [
       {title: 'CLI', slug: '/cli'},
       {title: 'HTTP', slug: '/http'},
-      {title: 'JSON RPC', slug: '/json-rpc'},
     ],
   ],
 };

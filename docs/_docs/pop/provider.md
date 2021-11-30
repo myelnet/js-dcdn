@@ -14,8 +14,8 @@ Everything is automated so you shouldn't need much fine tuning. Here we explain 
 
 Discovering which cache provider holds a requested piece of content is a difficult problem in a decentralized setting. There are currently two solutions to do so on the network: 
 
-- A fully decentralized but slow, gossip-based system, whereby gossip messages are propagated from a requesting client and relayed throughout the network until the requested content is found. 
-- A centralized system (which we aim to progressively decentralize) whereby a cache provider can connect to an 'indexing endpoint' which maintains a record of which provider is holding which content (`pop start -index-endpoint=...`). Clients can then query this endpoint to discover which provider they should fetch the content from. To push updates to the Myel network's public indexing endpoint set `-index-endpoint` to `https://routing.myel.workers.dev`. 
+- A fully decentralized but slower, gossip-based system, whereby gossip messages are propagated from a requesting client and relayed throughout the network until the requested content is found. 
+- A centralized system (which we aim to progressively decentralize) whereby a cache provider can connect to an 'indexing endpoint' which maintains a record of which provider is holding which content (`pop start -index-endpoint=...`). Clients can then query this endpoint to discover which provider they should fetch the content from. To push updates to the Myel network's public indexing endpoint set `-index-endpoint` to `https://routing.myel.workers.dev` when starting the node. 
 
 ## Replication
 

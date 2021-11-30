@@ -11,7 +11,7 @@ Welcome to the Myel documentation. Here you'll find information on how to run a 
 These nodes can execute four operations, which are:
 
 - ***Content dispatching***: a node can cache content and then ask other peers to cache this same content. 
-- ***Content discovery***: a node can search for specific content, as determined by a unique Content ID (CID).
+- ***Content routing***: a node can search for specific content, as determined by a unique Content ID (CID).
 - ***Content delivery***: a node can serve content they have cached.
 - ***Payments***:  a node can pay another node for delivering content. Currently payments are issued via [Filecoin payment channels](https://spec.filecoin.io/systems/filecoin_token/payment_channels/).
 
