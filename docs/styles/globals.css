@@ -127,9 +127,12 @@ pre[class*="language-"] {
 
 /* Code blocks */
 pre[class*="language-"] {
-	padding: 1em;
+	padding: 1em 24px 1em 24px;
 	margin: .5em 0;
 	overflow: auto;
+	margin-left: -24px;
+	margin-right: -24px;
+	border-radius: 8px;
 }
 
 :not(pre) > code[class*="language-"],

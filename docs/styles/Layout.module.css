@@ -269,12 +269,17 @@
   align-items: center;
 }
 
+@media screen and (max-width: 1448px) {
+  .navContainer {
+    padding-right: 16px;
+  }
+}
+
 @media screen and (max-width: 1023px) {
   .navContainer {
     position: fixed;
     top: 0;
     padding-left: 16px;
-    padding-right: 16px;
     width: 100%;
   }
 

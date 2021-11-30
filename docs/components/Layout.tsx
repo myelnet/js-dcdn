@@ -28,7 +28,8 @@ function NavBar({onMenuOpen}: NavBarProps) {
           <a
             href="https://myel.network"
             target="_blank"
-            className={styles.logo} rel="noreferrer">
+            className={styles.logo}
+            rel="noreferrer">
             <MyelLogo />
             <span className={styles.logoTitle}>Myel Docs</span>
           </a>
@@ -174,9 +175,9 @@ type ContentProps = {
 
 function Content({content}: ContentProps) {
   return (
-    <div className={styles.text}>
-      <div dangerouslySetInnerHTML={{__html: content}} />
-    </div>
+    <div
+      className={styles.text}
+      dangerouslySetInnerHTML={{__html: content}}></div>
   );
 }
 
