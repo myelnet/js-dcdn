@@ -10,15 +10,17 @@ import {
 } from 'myel-client';
 
 const controller = new PreloadController({
-  modules: {
-    transport: [Websockets],
-    connEncryption: [new Noise()],
-    streamMuxer: [Mplex],
-  },
-  config: {
-    transport: {
-      [Websockets.prototype[Symbol.toStringTag]]: {
-        filter: filters.all,
+  libp2p: {
+    modules: {
+      transport: [Websockets],
+      connEncryption: [new Noise()],
+      streamMuxer: [Mplex],
+    },
+    config: {
+      transport: {
+        [Websockets.prototype[Symbol.toStringTag]]: {
+          filter: filters.all,
+        },
       },
     },
   },

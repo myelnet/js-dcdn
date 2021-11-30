@@ -49,6 +49,10 @@ Defaults to an implementation that fetches records from a Cloudflare key value s
 
 ## Methods
 
+### `start()`
+
+Required to register the service worker handlers.
+
 ### `preload(entries)`
 
 If static ressources needed by the app are known ahead of time, they can be added

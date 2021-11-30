@@ -29,6 +29,7 @@ import {BlockstoreAdapter} from './BlockstoreAdapter';
 declare let self: ServiceWorkerGlobalScope;
 
 type ControllerOptions = {
+  libp2p: Libp2pOptions;
   rpcUrl?: string;
   privateKey?: string;
   blocks?: Blockstore;
@@ -50,9 +51,9 @@ export class PreloadController {
   private _client?: Client;
   private _installAndActiveListenersAdded?: boolean;
   private readonly _cidToContentEntry: Map<string, ContentEntry> = new Map();
-  private readonly _options: Libp2pOptions & ControllerOptions;
+  private readonly _options: ControllerOptions;
 
-  constructor(options: Libp2pOptions & ControllerOptions) {
+  constructor(options: ControllerOptions) {
     this._options = options;
     this.install = this.install.bind(this);
     this.activate = this.activate.bind(this);
@@ -96,7 +97,7 @@ export class PreloadController {
         await blocks.open();
       }
 
-      const libp2p = await Libp2p.create(this._options);
+      const libp2p = await Libp2p.create(this._options.libp2p);
       await libp2p.start();
 
       this._client = new Client({
