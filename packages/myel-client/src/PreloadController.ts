@@ -11,7 +11,8 @@ import {Multiaddr} from 'multiaddr';
 import {Blockstore, MemoryBlockstore} from 'interface-blockstore';
 import {Datastore} from 'interface-Datastore';
 import drain from 'it-drain';
-import {Client, DealOffer} from './Client';
+import {Client} from './Client';
+import {DealOffer, ContentRoutingInterface} from './routing';
 import {
   getSelector,
   entriesSelector,
@@ -29,21 +30,18 @@ declare let self: ServiceWorkerGlobalScope;
 
 type ControllerOptions = {
   rpcUrl?: string;
-  routingUrl?: string;
   privateKey?: string;
   blocks?: Blockstore;
   datastore?: Datastore;
-  rankOffersFn?: RankOfferFn;
+  routing?: ContentRoutingInterface;
 };
-
-type RankOfferFn = (offers: DealOffer[]) => DealOffer[];
 
 type ContentEntry = {
   root: string;
   selector: string;
   peerAddr: string;
   size: number;
-  pricePerByte: number;
+  pricePerByte?: number;
   paymentAddress?: Address;
   paymentChannel?: Address;
 };
@@ -52,23 +50,15 @@ export class PreloadController {
   private _client?: Client;
   private _installAndActiveListenersAdded?: boolean;
   private readonly _cidToContentEntry: Map<string, ContentEntry> = new Map();
-  private readonly _cidToRecords: Map<string, DealOffer[]> = new Map();
   private readonly _options: Libp2pOptions & ControllerOptions;
-  // sets a custom strategy for selecting best offers
-  rankOffersFn: RankOfferFn = (offers) => offers;
 
   constructor(options: Libp2pOptions & ControllerOptions) {
     this._options = options;
     this.install = this.install.bind(this);
     this.activate = this.activate.bind(this);
-    this.getOffer = this.getOffer.bind(this);
-
-    if (options.rankOffersFn) this.rankOffersFn = options.rankOffersFn;
   }
 
-  preload(entries: ContentEntry[]): void {
-    this.addToContentList(entries);
-
+  start(): void {
     if (!this._installAndActiveListenersAdded) {
       self.addEventListener('install', this.install);
       self.addEventListener('activate', this.activate);
@@ -88,7 +78,7 @@ export class PreloadController {
     }
   }
 
-  addToContentList(entries: ContentEntry[]): void {
+  preload(entries: ContentEntry[]): void {
     for (const entry of entries) {
       this._cidToContentEntry.set(entry.root, entry);
     }
@@ -113,7 +103,7 @@ export class PreloadController {
         libp2p,
         blocks,
         rpc: new FilRPC('https://infura.myel.cloud'),
-        routingFn: this.getOffer,
+        routing: this._options.routing,
       });
 
       if (this._options.privateKey) {
@@ -140,56 +130,5 @@ export class PreloadController {
     })();
     event.waitUntil(promise);
     return promise;
-  }
-
-  async getOffer(root: CID, sel?: SelectorNode): Promise<DealOffer[]> {
-    const key = root.toString();
-    // check if we already have records:
-    // content entry are statically loaded
-    const entry = this._cidToContentEntry.get(key);
-    if (entry) {
-      return [await this.offerFromEntry(root, entry)];
-    }
-    // records are cached from a previous request
-    const recs = this._cidToRecords.get(key);
-    if (recs) {
-      return this.rankOffersFn(recs);
-    }
-    // fetch a routing file can be from a local or remote endpoint
-    const raw = await fetch(this._options.routingUrl + '/' + key).then((resp) =>
-      resp.arrayBuffer()
-    );
-    const deferred: Uint8Array[] = decodeCbor(new Uint8Array(raw));
-    const records: DealOffer[] = deferred.map((def, i) => {
-      const rec: any[] = decodeCbor(def);
-      const maddr = new Multiaddr(rec[0]);
-      // id is used to keep track of the order of relevance
-      return {
-        id: String(i),
-        peerAddr: maddr,
-        cid: root,
-        size: rec[2],
-        minPricePerByte: new BN(0), // TODO: records do not include pricing at the moment
-        maxPaymentInterval: 1 << 20,
-        maxPaymentIntervalIncrease: 1 << 20,
-        paymentAddress: new Address(rec[1]),
-      };
-    });
-    this._cidToRecords.set(key, records);
-    return this.rankOffersFn(records);
-  }
-
-  offerFromEntry(root: CID, entry: ContentEntry): DealOffer {
-    return {
-      id: '1',
-      peerAddr: new Multiaddr(entry.peerAddr),
-      cid: root,
-      size: entry.size,
-      minPricePerByte: new BN(entry.pricePerByte),
-      maxPaymentInterval: 1 << 20,
-      maxPaymentIntervalIncrease: 1 << 20,
-      paymentAddress: entry.paymentAddress,
-      paymentChannel: entry.paymentChannel,
-    };
   }
 }

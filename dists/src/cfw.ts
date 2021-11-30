@@ -2,11 +2,9 @@ import Websockets from 'libp2p-websockets';
 import filters from 'libp2p-websockets/src/filters';
 import {Noise} from 'libp2p-noise/dist/src/noise';
 import Mplex from 'libp2p-mplex';
-import {Client, FilRPC, DealOffer, Address, EnvType} from 'myel-client';
+import {Client, FilRPC, ContentRouting, EnvType} from 'myel-client';
 import Libp2p from 'libp2p';
-import {CID} from 'multiformats';
 import {BN} from 'bn.js';
-import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {KVBlockstore} from './kv-blockstore';
 import {Multiaddr} from 'multiaddr';
 import PeerId from 'peer-id';
@@ -20,13 +18,23 @@ declare const PEER_PRIVKEY: string;
 declare const FIL_PRIVKEY: string;
 declare const NOISE_PRIVKEY: string;
 
-const MAX_RECORDS = 5;
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS',
   'Access-Control-Max-Age': '86400',
 };
+
+class KVRecordLoader {
+  async *getRecords(root: string): AsyncIterable<Uint8Array> {
+    const {keys} = await RECORDS.list({prefix: root.toString()});
+    for (const k of keys) {
+      const rec = await RECORDS.get(k.name, {type: 'arrayBuffer'});
+      if (rec) {
+        yield new Uint8Array(rec);
+      }
+    }
+  }
+}
 
 // the runtime might be kept between requests so we use a global variable
 // to reuse the client if possible
@@ -80,6 +88,7 @@ async function getOrCreateClient(): Promise<Client> {
       rpc: new FilRPC('https://infura.myel.cloud'),
       envType: EnvType.CloudflareWorker,
       filPrivKey: FIL_PRIVKEY,
+      routing: new ContentRouting({loader: new KVRecordLoader()}),
     });
   }
   return client;
@@ -107,52 +116,6 @@ function handleOptions(request: Request) {
   }
 }
 
-async function loadOffer(
-  root: CID,
-  params: URLSearchParams
-): Promise<DealOffer[]> {
-  const peer = params.get('peer');
-  if (peer !== null) {
-    return [
-      {
-        id: '1',
-        peerAddr: new Multiaddr(peer),
-        cid: root,
-        size: 0,
-        minPricePerByte: new BN(0),
-        maxPaymentInterval: 1 << 20,
-        maxPaymentIntervalIncrease: 1 << 20,
-      },
-    ];
-  }
-  const {keys} = await RECORDS.list({prefix: root.toString()});
-  const results: DealOffer[] = [];
-  let id = 1;
-  for (const k of keys) {
-    const rec = await RECORDS.get(k.name, {type: 'arrayBuffer'});
-    if (rec) {
-      const fields: any[] = decodeCbor(new Uint8Array(rec));
-      const maddr = new Multiaddr(fields[0]);
-      results.push({
-        id: String(id++),
-        peerAddr: maddr,
-        cid: root,
-        size: fields[2],
-        minPricePerByte: new BN(0),
-        maxPaymentInterval: 1 << 20,
-        maxPaymentIntervalIncrease: 1 << 20,
-        paymentAddress: new Address(fields[1]),
-      });
-    }
-    if (results.length === MAX_RECORDS) {
-      break;
-    }
-  }
-  // for now we return the first option but we can have a better
-  // location based selection
-  return results;
-}
-
 export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === 'OPTIONS') {
     return handleOptions(request);
@@ -169,7 +132,19 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   const client = await getOrCreateClient();
 
-  client.find = (root, sel) => loadOffer(root, params);
+  const peer = params.get('peer');
+  if (peer) {
+    const {root} = client.parsePath(path);
+    client.routing.provide(root, {
+      id: '1',
+      peerAddr: new Multiaddr(peer),
+      cid: root,
+      size: 0,
+      minPricePerByte: new BN(0),
+      maxPaymentInterval: 1 << 20,
+      maxPaymentIntervalIncrease: 1 << 20,
+    });
+  }
 
   return client.fetch(path, {headers: corsHeaders});
 }
