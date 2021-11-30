@@ -74,11 +74,10 @@ export class ContentRouting implements ContentRoutingInterface {
 
     const cached = this.cache.get(key);
     if (cached) {
-      return (async function* records() {
-        for (const d of cached) {
-          yield d;
-        }
-      })();
+      for (const d of cached) {
+        yield d;
+      }
+      return;
     }
 
     const records = await this.loader.getRecords(key, options);

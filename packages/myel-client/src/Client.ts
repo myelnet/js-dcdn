@@ -1068,6 +1068,7 @@ export class Client {
       }
 
       const {readable, writable} = new TransformStream();
+      const self = this;
       async function write() {
         const writer = writable.getWriter();
         writer.write(head);
@@ -1080,6 +1081,7 @@ export class Client {
           }
           writer.close();
         } catch (e) {
+          self.log('Aborting stream', e);
           writer.abort(e.message);
         }
       }
