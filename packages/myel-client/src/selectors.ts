@@ -77,15 +77,28 @@ export function selEquals(a: SelectorNode, b: SelectorNode): boolean {
   return equals(dagCBOR.encode(a), dagCBOR.encode(b));
 }
 
-export async function selToBlock(
-  sel: SelectorNode
-): Promise<Block<SelectorNode>> {
-  return encodeBlock<SelectorNode, 0x71, 0x12>({
-    value: sel,
-    codec: dagCBOR,
-    hasher: sha256,
-  });
-}
+// most requests use the same selectors so we memoize the blocks
+// for improved performance
+export const selToBlock = (function () {
+  const memo: Map<SelectorNode, Block<SelectorNode>> = new Map();
+
+  async function encodeSelToBlock(
+    sel: SelectorNode
+  ): Promise<Block<SelectorNode>> {
+    const m = memo.get(sel);
+    if (m) {
+      return m;
+    }
+    const blk = await encodeBlock<SelectorNode, 0x71, 0x12>({
+      value: sel,
+      codec: dagCBOR,
+      hasher: sha256,
+    });
+    memo.set(sel, blk);
+    return blk;
+  }
+  return encodeSelToBlock;
+})();
 
 export class Node {
   kind: Kind;
