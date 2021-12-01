@@ -44,6 +44,11 @@ const NOISE_PRIVKEY = 'Tf2k6XuVyGIw8GCMPCnSibJFGsYezlSYTvr3biM0nxM=';
             filter: filters.all,
           },
         },
+        // do not connect until we dial the protocol
+        // adds a small perf gain
+        peerDiscovery: {
+          autoDial: false,
+        },
       },
     });
     await libp2p.start();

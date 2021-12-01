@@ -1302,6 +1302,11 @@
   dependencies:
     "@sinonjs/commons" "^1.7.0"
 
+"@stablelib/benchmark@^1.0.1":
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/@stablelib/benchmark/-/benchmark-1.0.1.tgz#76fd06a4359103d79df1cf93c7fdd1410650d706"
+  integrity sha512-mqeZB6PvtGYbhrqZZTY7Dn0nr8q8pgu+WDbPaIcR2OXLHJZCTO1O75cWg4QNljda2jG5/4vsw0vXneHhpWAZCQ==
+
 "@tootallnate/once@1":
   version "1.1.2"
   resolved "https://registry.yarnpkg.com/@tootallnate/once/-/once-1.1.2.tgz#ccb91445360179a04e7fe6aff78c00ffc1eeaf82"

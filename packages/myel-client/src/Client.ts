@@ -1,5 +1,4 @@
 import {EventEmitter, HandlerProps, Connection, MuxedStream} from 'libp2p';
-import getPeer from 'libp2p/src/get-peer';
 import {pipe} from 'it-pipe';
 import lp from 'it-length-prefixed';
 import {decode, encode} from '@ipld/dag-cbor';
@@ -36,7 +35,7 @@ import {
   ChannelState,
   PaymentInfo,
 } from './fsm';
-import {encodeBigInt, encodeAsBigInt} from './utils';
+import {encodeBigInt, encodeAsBigInt, getPeerID} from './utils';
 import {
   SelectorNode,
   TraversalProgress,
@@ -884,10 +883,8 @@ export class Client {
       throw new Error('routing: not found');
     }
 
-    const {id: from, multiaddrs} = getPeer(offer.peerAddr);
-    if (multiaddrs) {
-      this.libp2p.peerStore.addressBook.add(from, multiaddrs);
-    }
+    const from = getPeerID(offer.peerAddr);
+    this.libp2p.peerStore.addressBook.add(from, [offer.peerAddr]);
     // make sure the offer targets the link
     offer.cid = link;
 
