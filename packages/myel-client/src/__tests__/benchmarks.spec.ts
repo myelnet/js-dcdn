@@ -8,7 +8,7 @@ const addrBytes = bytes.fromHex(
 );
 
 describe('benchmark', () => {
-  test('getPeer', () => {
+  test.skip('getPeer', () => {
     report(
       'Multiaddr + getPeerID',
       benchmark(() => getPeerID(new Multiaddr(addrBytes)))

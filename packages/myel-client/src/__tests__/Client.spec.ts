@@ -221,10 +221,14 @@ describe('MyelClient', () => {
     client._dealId = 1627988723469;
 
     const offer = {
-      id: '1',
-      peerAddr: multiaddr(
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+      id: PeerId.createFromB58String(
+        '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
       ),
+      multiaddrs: [
+        multiaddr(
+          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+        ),
+      ],
       cid: CID.parse(
         'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
       ),
@@ -287,11 +291,17 @@ describe('MyelClient', () => {
     });
     client._dealId = 1630453456080;
 
+    const ppid = PeerId.createFromB58String(
+      '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+    );
+
     const offer = {
-      id: '1',
-      peerAddr: multiaddr(
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
-      ),
+      id: ppid,
+      multiaddrs: [
+        multiaddr(
+          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+        ),
+      ],
       cid: CID.parse(
         'bafyreigae5sia65thtb3a73vudwi3rsxqscqnkh2mtx7jqjlq5xl72k7ba'
       ),
@@ -302,10 +312,6 @@ describe('MyelClient', () => {
       maxPaymentIntervalIncrease: 0,
     };
     routing.provide(offer.cid, offer);
-
-    const ppid = PeerId.createFromB58String(
-      '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
-    );
 
     const onTransferStart = () => {
       return new Promise((resolve) => {
@@ -403,10 +409,12 @@ describe('MyelClient', () => {
       client._dealId = 1627988723469;
 
       const offer = {
-        id: '1',
-        peerAddr: multiaddr(
-          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
-        ),
+        id: ppid,
+        multiaddrs: [
+          multiaddr(
+            '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+          ),
+        ],
         cid: CID.parse(
           'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
         ),
@@ -480,10 +488,12 @@ describe('MyelClient', () => {
       client._dealId = 1627988723469;
 
       const offer = {
-        id: '1',
-        peerAddr: multiaddr(
-          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
-        ),
+        id: ppid,
+        multiaddrs: [
+          multiaddr(
+            '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+          ),
+        ],
         cid: CID.parse(
           'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
         ),
@@ -618,10 +628,12 @@ describe('MyelClient', () => {
     client._dealId = 1627988723469;
 
     const offer = {
-      id: '1',
-      peerAddr: multiaddr(
-        '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
-      ),
+      id: ppid,
+      multiaddrs: [
+        multiaddr(
+          '/ip4/127.0.0.1/tcp/41505/ws/p2p/12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
+        ),
+      ],
       cid: CID.parse(
         'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
       ),

@@ -35,7 +35,7 @@ import {
   ChannelState,
   PaymentInfo,
 } from './fsm';
-import {encodeBigInt, encodeAsBigInt, getPeerID} from './utils';
+import {encodeBigInt, encodeAsBigInt} from './utils';
 import {
   SelectorNode,
   TraversalProgress,
@@ -883,8 +883,8 @@ export class Client {
       throw new Error('routing: not found');
     }
 
-    const from = getPeerID(offer.peerAddr);
-    this.libp2p.peerStore.addressBook.add(from, [offer.peerAddr]);
+    const from = offer.id;
+    this.libp2p.peerStore.addressBook.add(from, offer.multiaddrs);
     // make sure the offer targets the link
     offer.cid = link;
 

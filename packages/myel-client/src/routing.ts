@@ -1,10 +1,12 @@
 import {CID} from 'multiformats';
 import {decode as decodeCbor} from '@ipld/dag-cbor';
 import {Multiaddr} from 'multiaddr';
+import PeerId from 'peer-id';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
 import {Address} from './filaddress';
 import {SelectorNode} from './selectors';
+import {getPeerID} from './utils';
 
 // Returns a list of CBOR encoded records
 interface ProviderRecordLoader {
@@ -46,8 +48,8 @@ interface ContentRoutingOptions {
 }
 
 export type DealOffer = {
-  id: string;
-  peerAddr: Multiaddr;
+  id: PeerId;
+  multiaddrs: Multiaddr[];
   cid: CID;
   size: number;
   minPricePerByte: BigInt;
@@ -84,11 +86,12 @@ export class ContentRouting implements ContentRoutingInterface {
 
     for await (const def of records) {
       const rec: any[] = decodeCbor(def);
+      // TODO: a provider record may contain multiple multiaddr
       const maddr = new Multiaddr(rec[0]);
 
       const offer = {
-        id: String(Date.now()),
-        peerAddr: maddr,
+        id: getPeerID(maddr),
+        multiaddrs: [maddr],
         cid: cid,
         size: rec[2],
         minPricePerByte: new BN(0),
