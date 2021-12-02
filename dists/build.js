@@ -118,7 +118,7 @@ let dedupePlugin = {
     outdir: 'dist',
     plugins: [dedupePlugin],
     metafile: true,
-    minify: true,
+    minify: false,
     legalComments: 'none',
   });
 

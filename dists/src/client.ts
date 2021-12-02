@@ -44,14 +44,11 @@ const NOISE_PRIVKEY = 'Tf2k6XuVyGIw8GCMPCnSibJFGsYezlSYTvr3biM0nxM=';
             filter: filters.all,
           },
         },
-        // do not connect until we dial the protocol
-        // adds a small perf gain
-        peerDiscovery: {
-          autoDial: false,
-        },
       },
     });
     await libp2p.start();
+
+    let chunkId = 1;
 
     window.MClient = new Client({
       libp2p,
@@ -60,6 +57,15 @@ const NOISE_PRIVKEY = 'Tf2k6XuVyGIw8GCMPCnSibJFGsYezlSYTvr3biM0nxM=';
       routing: new ContentRouting({
         loader: new FetchRecordLoader('/routing'),
       }),
+      exportChunk: (blob: Blob) => {
+        const textFile = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('download', 'info.txt');
+        link.href = textFile;
+        const ltxt = document.createTextNode('Download chunk ' + ++chunkId);
+        link.appendChild(ltxt);
+        document.body.appendChild(link);
+      },
     });
   }
 })();

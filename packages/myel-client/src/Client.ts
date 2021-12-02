@@ -119,6 +119,7 @@ type ClientOptions = {
   rpcMsgTimeout?: number;
   envType?: EnvType;
   debug?: boolean;
+  exportChunk?: (file: Blob) => void;
 };
 
 enum DealStatus {
@@ -326,6 +327,8 @@ export class Client {
   routing: ContentRoutingInterface;
   // debug adds some convenient logs when debugging reducing performance
   debug = false;
+  // temp export a chunk
+  exportChunk?: (file: Blob) => void;
 
   // graphsync request id. doesn't need be unique between clients.
   _reqId: number = 0;
@@ -386,6 +389,8 @@ export class Client {
     if (options.debug) {
       this.debug = true;
     }
+
+    this.exportChunk = options.exportChunk;
   }
 
   log(...params: any[]): void {
@@ -676,9 +681,34 @@ export class Client {
   }
 
   async _onGraphsyncConn({stream, connection}: HandlerProps) {
+    await this._pipeGraphsync(stream.source as AsyncIterable<BufferList>);
+    // const exportChunk = this.exportChunk;
+    // try {
+    //   await pipe(
+    //     stream,
+    //     async function* (source: AsyncIterable<BufferList>) {
+    //       for await (const chunk of source) {
+    //         if (exportChunk) {
+    //           const hex = bytes.toHex(chunk.slice());
+    //           exportChunk(new Blob([hex], {type: 'text/plain'}));
+    //         }
+    //         yield chunk;
+    //       }
+    //     },
+    //     lp.decode(),
+    //     this._interceptBlocks,
+    //     this._readGsExtension(DT_EXTENSION, this._processTransferMessage),
+    //     this._readGsStatus
+    //   );
+    // } catch (e) {
+    //   this.log(e);
+    // }
+  }
+
+  async _pipeGraphsync(source: AsyncIterable<BufferList>) {
     try {
       await pipe(
-        stream,
+        source,
         lp.decode(),
         this._interceptBlocks,
         this._readGsExtension(DT_EXTENSION, this._processTransferMessage),

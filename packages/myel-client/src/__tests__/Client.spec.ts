@@ -2,7 +2,7 @@ import {MemoryBlockstore} from 'interface-blockstore';
 import {encode} from 'multiformats/block';
 import {Client, DT_EXTENSION} from '../Client';
 import {allSelector, entriesSelector} from '../selectors';
-import {MockRPCProvider, MockLibp2p} from './utils';
+import {MockRPCProvider, MockLibp2p, MockRouting} from './utils';
 import PeerId from 'peer-id';
 import {CID, bytes} from 'multiformats';
 import {sha256} from 'multiformats/hashes/sha2';
@@ -43,24 +43,6 @@ async function* gsFirstBlock(): AsyncIterable<Uint8Array> {
 }
 async function* gs2ndBlock(): AsyncIterable<Uint8Array> {
   yield fix.gsMsg2;
-}
-
-class MockRouting {
-  cache: Map<string, DealOffer[]> = new Map();
-  async provide(cid: CID, offer: DealOffer) {
-    const offers = this.cache.get(cid.toString()) ?? [];
-    this.cache.set(cid.toString(), [offer, ...offers]);
-  }
-
-  async *findProviders(cid: CID, options?: any) {
-    const offers = this.cache.get(cid.toString());
-    if (!offers) {
-      throw new Error('offers not found');
-    }
-    for (const offer of offers) {
-      yield offer;
-    }
-  }
 }
 
 describe('MyelClient', () => {

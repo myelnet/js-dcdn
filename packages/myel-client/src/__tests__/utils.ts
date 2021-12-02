@@ -5,6 +5,8 @@ import {Multiaddr} from 'multiaddr';
 import {EventEmitter} from 'events';
 // @ts-ignore
 import pair from 'it-pair';
+import {CID} from 'multiformats';
+import {DealOffer} from '../routing';
 
 export class MockRPCProvider {
   results: Map<string, any> = new Map();
@@ -124,5 +126,23 @@ export class MockLibp2p {
       stream,
       protocol: typeof protocols === 'string' ? protocols : protocols[0],
     };
+  }
+}
+
+export class MockRouting {
+  cache: Map<string, DealOffer[]> = new Map();
+  async provide(cid: CID, offer: DealOffer) {
+    const offers = this.cache.get(cid.toString()) ?? [];
+    this.cache.set(cid.toString(), [offer, ...offers]);
+  }
+
+  async *findProviders(cid: CID, options?: any) {
+    const offers = this.cache.get(cid.toString());
+    if (!offers) {
+      throw new Error('offers not found');
+    }
+    for (const offer of offers) {
+      yield offer;
+    }
   }
 }
