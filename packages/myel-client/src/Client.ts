@@ -12,17 +12,12 @@ import {sha256} from 'multiformats/hashes/sha2';
 import * as dagJSON from 'multiformats/codecs/json';
 import {multiaddr, Multiaddr} from 'multiaddr';
 import mime from 'mime/lite';
-// @ts-ignore (no types)
-import protons from 'protons';
-// @ts-ignore (no types)
-import vd from 'varint-decoder';
 import blakejs from 'blakejs';
 import {UnixFS} from 'ipfs-unixfs';
 import BigInt from 'bn.js';
 import {BN} from 'bn.js';
 import {Address, concat as concatUint8Arrays} from './filaddress';
 import {MemoryBlockstore, Blockstore} from 'interface-blockstore';
-
 import {RPCProvider} from './FilRPC';
 import {PaychMgr} from './PaychMgr';
 import {Signer, Secp256k1Signer} from './Signer';
@@ -50,6 +45,7 @@ import {
   traverse,
   toPathComponents,
   Node,
+  resolve,
 } from './selectors';
 import {detectContentType} from './mimesniff';
 import {
@@ -58,15 +54,16 @@ import {
   ContentRoutingInterface,
   FetchRecordLoader,
 } from './routing';
-
-const HEY_PROTOCOL = '/myel/pop/hey/1.0';
-
-const GS_PROTOCOL = '/ipfs/graphsync/1.0.0';
+import * as Graphsync from './graphsync';
+import {
+  TransferMessage,
+  TransferRequest,
+  TransferResponse,
+  DealStatus,
+  DealResponse,
+} from './data-transfer';
 
 const DT_PROTOCOL = '/fil/datatransfer/1.1.0';
-
-const GS_EXTENSION_METADATA = 'graphsync/response-metadata';
-
 export const DT_EXTENSION = 'fil/data-transfer/1.1';
 
 const ErrChannelNotFound = new Error('data transfer channel not found');
@@ -122,172 +119,6 @@ type ClientOptions = {
   exportChunk?: (file: Blob) => void;
 };
 
-enum DealStatus {
-  New = 0,
-  Unsealing,
-  Unsealed,
-  WaitForAcceptance,
-  PaymentChannelCreating,
-  PaymentChannelAddingFunds,
-  Accepted,
-  FundsNeededUnseal,
-  Failing,
-  Rejected,
-  FundsNeeded,
-  SendFunds,
-  SendFundsLastPayment,
-  Ongoing,
-  FundsNeededLastPayment,
-  Completed,
-  DealNotFound,
-  Errored,
-  BlocksComplete,
-  Finalizing,
-  Completing,
-  CheckComplete,
-  CheckFunds,
-  InsufficientFunds,
-  PaymentChannelAllocatingLane,
-  Cancelling,
-  Cancelled,
-  WaitingForLastBlocks,
-  PaymentChannelAddingInitialFunds,
-}
-
-type DealResponse = {
-  ID: number;
-  Status: DealStatus;
-  PaymentOwed: Uint8Array;
-  Message: string;
-};
-
-type TransferMessage = {
-  IsRq: boolean;
-  Request?: TransferRequest;
-  Response?: TransferResponse;
-};
-
-type TransferRequest = {
-  Type: number;
-  XferID: number;
-  BCid?: CID;
-  Paus?: boolean;
-  Part?: boolean;
-  Pull?: boolean;
-  Stor?: Uint8Array;
-  Vouch?: any;
-  VTyp?: string;
-  RestartChannel?: ChannelID;
-};
-
-type TransferResponse = {
-  Type: number;
-  Acpt: boolean;
-  Paus: boolean;
-  XferID: number;
-  VRes: any;
-  VTyp: string;
-};
-
-type GraphsyncExtentions = {
-  [key: string]: Uint8Array;
-};
-
-type GraphsyncRequest = {
-  id: number;
-  root: Uint8Array;
-  selector: Uint8Array;
-  extensions: GraphsyncExtentions;
-  priority: number;
-  cancel: boolean;
-  update: boolean;
-};
-
-enum GraphsyncResponseStatus {
-  RequestAcknowledged = 10,
-  PartialResponse = 14,
-  RequestPaused = 15,
-  RequestCompletedFull = 20,
-  RequestCompletedPartial = 21,
-  RequestRejected = 30,
-  RequestFailedBusy = 31,
-  RequestFailedUnknown = 32,
-  RequestFailedLegal = 33,
-  RequestFailedContentNotFound = 34,
-  RequestCancelled = 35,
-}
-
-const graphsyncStatuses = {
-  [GraphsyncResponseStatus.RequestAcknowledged]: 'RequestAcknowledged',
-  [GraphsyncResponseStatus.PartialResponse]: 'PartialResponse',
-  [GraphsyncResponseStatus.RequestPaused]: 'RequestPaused',
-  [GraphsyncResponseStatus.RequestCompletedFull]: 'RequestCompletedFull',
-  [GraphsyncResponseStatus.RequestCompletedPartial]: 'RequestCompletedPartial',
-  [GraphsyncResponseStatus.RequestRejected]: 'RequestRejected',
-};
-
-type GraphsyncResponse = {
-  id: number;
-  status: GraphsyncResponseStatus;
-  extensions: GraphsyncExtentions;
-};
-
-type GraphsyncMessage = {
-  completeRequestList?: boolean;
-  requests?: GraphsyncRequest[];
-  responses?: GraphsyncResponse[];
-  data?: GraphsyncBlock[];
-};
-
-type GraphsyncBlock = {
-  prefix: Uint8Array;
-  data: Uint8Array;
-};
-
-type GraphsyncMetadata = {
-  link: CID;
-};
-
-const gsMsg = protons(`
-syntax = "proto3";
-
-package graphsync.message.pb;
-
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-option go_package = ".;graphsync_message_pb";
-
-message Message {
-
-  message Request {
-    int32 id = 1;       // unique id set on the requester side
-    bytes root = 2;     // a CID for the root node in the query
-    bytes selector = 3; // ipld selector to retrieve
-    map<string, bytes> extensions = 4;    // aux information. useful for other protocols
-    int32 priority = 5;	// the priority (normalized). default to 1
-    bool  cancel = 6;   // whether this cancels a request
-    bool  update = 7;   // whether this requests resumes a previous request
-  }
-
-  message Response {
-    int32 id = 1;     // the request id
-    int32 status = 2; // a status code.
-    map<string, bytes> extensions = 3; // additional data
-  }
-
-  message Block {
-  	bytes prefix = 1; // CID prefix (cid version, multicodec and multihash prefix (type + length)
-  	bytes data = 2;
-  }
-  
-  // the actual data included in this message
-  bool completeRequestList    = 1; // This request list includes *all* requests, replacing outstanding requests.
-  repeated Request  requests  = 2 [(gogoproto.nullable) = false]; // The list of requests.
-  repeated Response responses = 3 [(gogoproto.nullable) = false]; // The list of responses.
-  repeated Block    data      = 4 [(gogoproto.nullable) = false]; // Blocks related to the responses
-
-}
-`);
-
 type FetchInit = {
   headers: {[key: string]: string};
 };
@@ -336,8 +167,6 @@ export class Client {
   _dealId: number = Date.now();
   // channels are stateful communication channels between 2 peers.
   private readonly _channels: Map<number, Channel> = new Map();
-  // loaders is a map of loaders per request
-  private readonly _loaders: Map<number, AsyncLoader> = new Map();
   // requests maps graphsync request params to request ids
   private readonly _reqidByCID: Map<string, number> = new Map();
   // map a data transfer deal to a graphsyc request id
@@ -350,6 +179,8 @@ export class Client {
   // listeners get called every time transfers hit the given state
   private readonly _listeners: Map<string, ((state: ChannelState) => void)[]> =
     new Map();
+  // BlockLoader manages block loaders for each requests
+  private readonly _blockLoader: Graphsync.BlockLoader;
 
   constructor(options: ClientOptions) {
     this.libp2p = options.libp2p;
@@ -380,11 +211,13 @@ export class Client {
       });
 
     // handle all graphsync connections
-    this.libp2p.handle(GS_PROTOCOL, this._onGraphsyncConn.bind(this));
+    this.libp2p.handle(Graphsync.PROTOCOL, this._onGraphsyncConn.bind(this));
     // handle all data transfer connections
     this.libp2p.handle(DT_PROTOCOL, this._onDataTransferConn.bind(this));
 
-    this._interceptBlocks = this._interceptBlocks.bind(this);
+    this._blockLoader = new Graphsync.BlockLoader(this.blocks);
+
+    this.resolve = this.resolve.bind(this);
 
     if (options.debug) {
       this.debug = true;
@@ -443,14 +276,12 @@ export class Client {
   ): Channel {
     const chid = {
       id: reqId,
-      initiator,
       responder,
     };
     const ch = createChannel(
       chid,
       {
         root: offer.cid,
-        selector,
         received: 0,
         totalSize: offer.size,
         paidFor: 0,
@@ -535,23 +366,6 @@ export class Client {
       const err = res.VRes?.Message ?? 'Voucher invalid';
       // TODO
     }
-  };
-
-  // decode a graphsync block into an IPLD block
-  _decodeBlock = async (block: GraphsyncBlock): Promise<Block<any>> => {
-    const values = vd(block.prefix);
-    const cidVersion = values[0];
-    const multicodec = values[1];
-    const multihash = values[2];
-    const hasher = this._hashers[multihash];
-    if (!hasher) {
-      throw new Error('Unsuported hasher');
-    }
-    const hash = await hasher.digest(block.data);
-    const cid = CID.create(cidVersion, multicodec, hash);
-    const decode = decoderFor(cid);
-    const value = decode ? decode(block.data) : block.data;
-    return new Block({value, cid, bytes: block.data});
   };
 
   async _loadFunds(id: number) {
@@ -649,15 +463,14 @@ export class Client {
     return options;
   }
 
-  async _sendGraphsyncMsg(to: PeerId, msg: GraphsyncMessage) {
+  async _sendGraphsyncMsg(to: PeerId, msg: Graphsync.Message) {
     try {
       const {stream} = await this.libp2p.dialProtocol(
         to,
-        GS_PROTOCOL,
+        Graphsync.PROTOCOL,
         this._dialOptions()
       );
-      const bytes = gsMsg.Message.encode(msg);
-      await pipe([bytes], lp.encode(), stream);
+      await pipe([Graphsync.encodeMessage(msg)], stream);
     } catch (e) {
       this.log(e);
     }
@@ -680,8 +493,9 @@ export class Client {
     }
   }
 
-  async _onGraphsyncConn({stream, connection}: HandlerProps) {
-    await this._pipeGraphsync(stream.source as AsyncIterable<BufferList>);
+  _onGraphsyncConn({stream, connection}: HandlerProps) {
+    this._pipeGraphsync(stream.source as AsyncIterable<BufferList>);
+
     // const exportChunk = this.exportChunk;
     // try {
     //   await pipe(
@@ -705,96 +519,13 @@ export class Client {
     // }
   }
 
-  async _pipeGraphsync(source: AsyncIterable<BufferList>) {
-    try {
-      await pipe(
-        source,
-        lp.decode(),
-        this._interceptBlocks,
-        this._readGsExtension(DT_EXTENSION, this._processTransferMessage),
-        this._readGsStatus
-      );
-    } catch (e) {
-      this.log(e);
-    }
-  }
-
-  // intercepts blocks and sends them to a queue then forwards the responses
-  async *_interceptBlocks(
-    source: AsyncIterable<BufferList>
-  ): AsyncIterable<GraphsyncResponse> {
-    for await (const chunk of source) {
-      const msg: GraphsyncMessage = await gsMsg.Message.decode(chunk.slice());
-      // extract blocks from graphsync messages
-      const blocks: {[key: string]: Block<any>} = (
-        await Promise.all((msg.data || []).map(this._decodeBlock))
-      ).reduce((blocks, blk) => {
-        return {
-          ...blocks,
-          [blk.cid.toString()]: blk,
-        };
-      }, {});
-      // extract data transfer extensions from graphsync response messages
-      if (msg.responses) {
-        for (let i = 0; i < msg.responses.length; i++) {
-          const gsres = msg.responses[i];
-
-          const loader = this._loaders.get(gsres.id);
-          if (!loader) {
-            throw new Error('no block loader for transfer ' + gsres.id);
-          }
-
-          // Provides additional context about the traversal such as if a link is absent
-          const mdata = gsres.extensions[GS_EXTENSION_METADATA];
-          if (mdata) {
-            const metadata: GraphsyncMetadata[] = decode(mdata);
-            for (let i = 0; i < metadata.length; i++) {
-              const blk = blocks[metadata[i].link.toString()];
-              if (blk) {
-                loader.push(blk);
-              }
-            }
-          }
-
-          yield gsres;
-        }
-      }
-    }
-  }
-
-  // executes a callback the extensions for the given name and forwards the graphsync response
-  _readGsExtension(
-    name: string,
-    cb: (ext: Uint8Array) => void
-  ): (
-    src: AsyncIterable<GraphsyncResponse>
-  ) => AsyncIterable<GraphsyncResponse> {
-    async function* yieldExtensions(source: AsyncIterable<GraphsyncResponse>) {
-      for await (const gsres of source) {
-        const ext = gsres.extensions[name];
-        if (ext) {
-          cb(ext);
-        }
-        yield gsres;
-      }
-    }
-    return yieldExtensions;
-  }
-
-  // sink all the responses and update graphsync status if needed
-  // not using it since the data transfer status is enough to know the state of the transfer.
-  async _readGsStatus(src: AsyncIterable<GraphsyncResponse>) {
-    for await (const msg of src) {
-      const gsStatus = msg.status;
-      switch (gsStatus) {
-        case GraphsyncResponseStatus.RequestCompletedFull:
-        case GraphsyncResponseStatus.RequestFailedUnknown:
-        case GraphsyncResponseStatus.PartialResponse:
-        case GraphsyncResponseStatus.RequestPaused:
-        case GraphsyncResponseStatus.RequestCompletedPartial:
-          break;
-      }
-    }
+  _pipeGraphsync(source: AsyncIterable<BufferList>) {
+    Graphsync.decodeMessages(source, this._blockLoader);
+    // , undefined, (exts) => {
+    //   if (exts[DT_EXTENSION]) {
+    //     this._processTransferMessage(exts[DT_EXTENSION]);
+    //   }
+    // });
   }
 
   async _onDataTransferConn({stream, connection}: HandlerProps) {
@@ -828,6 +559,13 @@ export class Client {
     }
     this.log('sending event', event, 'to channel', id);
     ch.send(event);
+
+    const ls = this._listeners.get(
+      typeof event === 'object' ? event.type : event
+    );
+    if (ls) {
+      ls.forEach((cb) => cb(ch.state));
+    }
   }
 
   getChannelState(id: number): ChannelState {
@@ -885,22 +623,25 @@ export class Client {
     // try if we have any ongoing graphsync request we can load from
     const key = link.toString() + '-' + selblk.cid.toString();
     const reqId = this._reqidByCID.get(key) ?? this._reqId++;
-    let loader = this._loaders.get(reqId);
-    if (loader) {
+
+    let loader;
+
+    try {
+      loader = this._blockLoader.getLoader(reqId);
       return loader.load(cid);
+    } catch (e) {
+      // if we don't create a new request
+      this.log('no loader found, init new transfer', reqId);
     }
-    // if we don't create a new request
-    this.log('no loader found, init new transfer', reqId);
     // immediately create an async loader. subsequent requests for the same dag
     // will be routed to the same loader.
-    loader = new AsyncLoader(this.blocks, (blk: Block<any>) =>
+    loader = this._blockLoader.newLoader(reqId, (blk: Block<any>) =>
       this.updateChannel(reqId, {
         type: 'BLOCK_RECEIVED',
         received: blk.bytes.byteLength,
       })
     );
     this._reqidByCID.set(key, reqId);
-    this._loaders.set(reqId, loader);
 
     const offers = this.routing
       .findProviders(root, {selector: sel})
@@ -930,7 +671,6 @@ export class Client {
     );
 
     this._channels.set(reqId, channel);
-    this._reqidByCID.set(key, reqId);
     this._reqidByDID.set(req.XferID, reqId);
 
     this._sendGraphsyncMsg(from, {
@@ -953,99 +693,6 @@ export class Client {
     return loader.load(cid);
   }
 
-  parsePath(path: string): {root: CID; segments: string[]} {
-    const comps = toPathComponents(path);
-    const root = CID.parse(comps[0]);
-    return {
-      segments: comps,
-      root,
-    };
-  }
-
-  /**
-   * resolve content from a DAG using a path. May execute multiple data transfers to obtain the required blocks.
-   */
-  async *resolver(path: string): AsyncIterable<any> {
-    const {segments, root} = this.parsePath(path);
-    let cid = root;
-    let segs = segments.slice(1);
-    let isLast = false;
-
-    do {
-      if (segs.length === 0) {
-        isLast = true;
-      }
-      const result = this.resolve(
-        root,
-        cid,
-        // for unixfs unless we know the index of the path we're looking for
-        // we must recursively request the entries to find the link hash
-        getSelector(segs.length === 0 ? '*' : '/')
-      );
-      incomingBlocks: for await (const blk of result) {
-        // if not cbor or dagpb just return the bytes
-        switch (blk.cid.code) {
-          case 0x70:
-          case 0x71:
-            break;
-          default:
-            yield blk.bytes;
-            continue incomingBlocks;
-        }
-        try {
-          const unixfs = UnixFS.unmarshal(blk.value.Data);
-          if (unixfs.isDirectory()) {
-            // if it's a directory and we have a segment to resolve, identify the link
-            if (segs.length > 0) {
-              for (const link of blk.value.Links) {
-                if (link.Name === segs[0]) {
-                  cid = link.Hash;
-                  segs = segs.slice(1);
-                  break incomingBlocks;
-                }
-              }
-              throw new Error('key not found: ' + segs[0]);
-            } else {
-              // if the block is a directory and we have no key return the entries as JSON
-              yield dagJSON.encode(
-                blk.value.Links.map((l: PBLink) => ({
-                  name: l.Name,
-                  hash: l.Hash.toString(),
-                  size: l.Tsize,
-                }))
-              );
-              break incomingBlocks;
-            }
-          }
-          if (unixfs.type === 'file') {
-            if (unixfs.data && unixfs.data.length) {
-              yield unixfs.data;
-            }
-            continue incomingBlocks;
-          }
-        } catch (e) {}
-        // we're outside of unixfs territory
-        if (segs.length > 0) {
-          // best effort to access the field associated with the key
-          const key = segs[0];
-          const field = blk.value[key];
-          if (field) {
-            const link = CID.asCID(field);
-            if (link) {
-              cid = link;
-              segs = segs.slice(1);
-            } else {
-              yield field;
-            }
-          }
-        } else {
-          yield blk.bytes;
-          continue incomingBlocks;
-        }
-      }
-    } while (!isLast);
-  }
-
   async *resolve(
     root: CID,
     link: CID,
@@ -1058,18 +705,15 @@ export class Client {
     const key = link.toString() + '-' + selblk.cid.toString();
     const reqid = this._reqidByCID.get(key);
     if (typeof reqid !== 'undefined') {
-      const loader = this._loaders.get(reqid);
-      if (loader) {
-        // the callback ensures we only send this event once
-        this.updateChannel(reqid, 'ALL_BLOCKS_RECEIVED');
-        this._loaders.delete(reqid);
-      }
+      this._blockLoader.cleanLoader(reqid, () =>
+        this.updateChannel(reqid, 'ALL_BLOCKS_RECEIVED')
+      );
     }
   }
 
   // fetch exposes an API similar to the FetchAPI
   async fetch(url: string, init: FetchInit = {headers: {}}): Promise<Response> {
-    const content = this.resolver(url);
+    const content = resolve(url, this.resolve);
     const iterator = content[Symbol.asyncIterator]();
     const headers = init.headers;
 

@@ -18,13 +18,11 @@ export type PaymentInfo = {
 
 export type ChannelID = {
   id: number;
-  initiator: PeerId;
   responder: PeerId;
 };
 
 export interface DealContext {
   root: CID;
-  selector: SelectorNode;
   received: number;
   totalSize: number;
   allReceived: boolean;
@@ -95,8 +93,7 @@ export function createChannel(
   return interpret(
     createMachine<DealContext, DealEvent, DealState>(
       {
-        id:
-          id.initiator.toString() + '-' + id.responder.toString() + '-' + id.id,
+        id: id.responder.toString() + '-' + id.id,
         initial: 'new',
         context,
         states: {
@@ -112,11 +109,11 @@ export function createChannel(
               DEAL_ACCEPTED: 'accepted',
               DEAL_REjECTED: 'rejected',
               BLOCK_RECEIVED: {
-                target: 'waitForAcceptance',
+                target: 'accepted',
                 actions: receiveBlock,
               },
               ALL_BLOCKS_RECEIVED: {
-                target: 'waitForAcceptance',
+                target: 'accepted',
                 actions: receiveAllBlocks,
               },
               // may happen in the case of a free transfer and a single block

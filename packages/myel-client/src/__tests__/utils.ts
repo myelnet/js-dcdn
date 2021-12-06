@@ -7,6 +7,8 @@ import {EventEmitter} from 'events';
 import pair from 'it-pair';
 import {CID} from 'multiformats';
 import {DealOffer} from '../routing';
+import BufferList from 'bl/bufferlist';
+import drain from 'it-drain';
 
 export class MockRPCProvider {
   results: Map<string, any> = new Map();
@@ -53,12 +55,21 @@ export class MockLibp2p {
     addressBook: new MockAddressBook(),
   };
 
+  sources: {[key: string]: AsyncIterable<BufferList>} = {};
+
   constructor(peerId: PeerId) {
     this.peerId = peerId;
   }
 
   handle(protocol: string, handler: (props: HandlerProps) => void) {
     this.handlers[protocol] = handler;
+  }
+
+  unhandle(protocol: string | string[]) {
+    const protos = Array.isArray(protocol) ? protocol : [protocol];
+    protos.forEach((p) => {
+      delete this.handlers[p];
+    });
   }
 
   async dial(
@@ -118,14 +129,23 @@ export class MockLibp2p {
     options?: any
   ): Promise<{stream: MuxedStream; protocol: string}> {
     const id = '' + this.streamId++;
-    const stream: MuxedStream = pair();
+    const stream: MuxedStream =
+      id in this.sources
+        ? {
+            source: this.sources[id],
+            sink: drain,
+          }
+        : pair();
     stream.close = () => stream.sink(new Uint8Array(0));
     stream.id = id;
 
-    return {
+    const conn = {
       stream,
       protocol: typeof protocols === 'string' ? protocols : protocols[0],
     };
+    // @ts-ignore
+    this.handlers[conn.protocol]({stream, connection: conn});
+    return conn;
   }
 }
 

@@ -5,6 +5,9 @@ import * as dagCBOR from '@ipld/dag-cbor';
 import {sha256} from 'multiformats/hashes/sha2';
 import {Blockstore} from 'interface-blockstore';
 import {equals} from './filaddress';
+import {UnixFS} from 'ipfs-unixfs';
+import * as dagJSON from 'multiformats/codecs/json';
+import {PBLink} from '@ipld/dag-pb';
 
 enum Kind {
   Invalid = '',
@@ -425,7 +428,7 @@ function parseLimit(node: LimitNode): RecursionLimit {
 type VisitorFn = (prog: TraversalProgress, node: any) => void;
 type AsyncVisitorFn = (prog: TraversalProgress, node: any) => Promise<void>;
 
-type BlockNotifyFn = (block: Block<any>) => void;
+export type BlockNotifyFn = (block: Block<any>) => void;
 
 export async function blockFromStore(
   cid: CID,
@@ -462,6 +465,7 @@ export class AsyncLoader implements LinkLoader {
   loaded: Set<string> = new Set();
   // flag if this async loader was already flushed
   flushed = false;
+
   constructor(store: Blockstore, tracker?: BlockNotifyFn) {
     this.store = store;
     this.tracker = tracker;
@@ -485,8 +489,9 @@ export class AsyncLoader implements LinkLoader {
     }
   }
   async waitForBlock(cid: CID): Promise<Block<any>> {
+    // this is faster than queueing a promise
     while (true) {
-      await new Promise((resolve) => setTimeout(resolve));
+      await Promise.resolve();
       const block = this.pending.get(cid.toString());
       if (block) {
         return block;
@@ -524,6 +529,7 @@ export type TraversalProgress = {
   } | null;
 };
 
+// This mirrors the go walkAdv implementation
 export function traversal(config: TraversalConfig) {
   let prog: TraversalProgress = config.progress || {
     path: new Path(),
@@ -775,4 +781,115 @@ export async function* walk(
       }
     }
   }
+}
+
+function parsePath(path: string): {root: CID; segments: string[]} {
+  const comps = toPathComponents(path);
+  const root = CID.parse(comps[0]);
+  return {
+    segments: comps,
+    root,
+  };
+}
+
+interface loaderFactory {
+  newLoader(root: CID, link: CID, sel: SelectorNode): LinkLoader;
+}
+
+export function offlineLoader(blocks: Blockstore) {
+  return {
+    newLoader(root: CID, link: CID, sel: SelectorNode) {
+      return {
+        load: (cid: CID) => blockFromStore(cid, blocks),
+      };
+    },
+  };
+}
+
+/**
+ * resolve content from a DAG using a path. May execute multiple data transfers to obtain the required blocks.
+ */
+export async function* resolve(
+  path: string,
+  lf: loaderFactory
+): AsyncIterable<any> {
+  const {segments, root} = parsePath(path);
+  let cid = root;
+  let segs = segments.slice(1);
+  let isLast = false;
+
+  do {
+    if (segs.length === 0) {
+      isLast = true;
+    }
+    // for unixfs unless we know the index of the path we're looking for
+    // we must recursively request the entries to find the link hash
+    const sel = getSelector(segs.length === 0 ? '*' : '/');
+    const loader = lf.newLoader(root, cid, sel);
+    incomingBlocks: for await (const blk of walk(
+      new Node(cid),
+      parseContext().parseSelector(sel),
+      loader
+    )) {
+      // if not cbor or dagpb just return the bytes
+      switch (blk.cid.code) {
+        case 0x70:
+        case 0x71:
+          break;
+        default:
+          yield blk.bytes;
+          continue incomingBlocks;
+      }
+      try {
+        const unixfs = UnixFS.unmarshal(blk.value.Data);
+        if (unixfs.isDirectory()) {
+          // if it's a directory and we have a segment to resolve, identify the link
+          if (segs.length > 0) {
+            for (const link of blk.value.Links) {
+              if (link.Name === segs[0]) {
+                cid = link.Hash;
+                segs = segs.slice(1);
+                break incomingBlocks;
+              }
+            }
+            throw new Error('key not found: ' + segs[0]);
+          } else {
+            // if the block is a directory and we have no key return the entries as JSON
+            yield dagJSON.encode(
+              blk.value.Links.map((l: PBLink) => ({
+                name: l.Name,
+                hash: l.Hash.toString(),
+                size: l.Tsize,
+              }))
+            );
+            break incomingBlocks;
+          }
+        }
+        if (unixfs.type === 'file') {
+          if (unixfs.data && unixfs.data.length) {
+            yield unixfs.data;
+          }
+          continue incomingBlocks;
+        }
+      } catch (e) {}
+      // we're outside of unixfs territory
+      if (segs.length > 0) {
+        // best effort to access the field associated with the key
+        const key = segs[0];
+        const field = blk.value[key];
+        if (field) {
+          const link = CID.asCID(field);
+          if (link) {
+            cid = link;
+            segs = segs.slice(1);
+          } else {
+            yield field;
+          }
+        }
+      } else {
+        yield blk.bytes;
+        continue incomingBlocks;
+      }
+    }
+  } while (!isLast);
 }

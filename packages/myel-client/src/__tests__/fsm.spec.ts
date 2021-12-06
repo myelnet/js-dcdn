@@ -5,9 +5,6 @@ import {BN} from 'bn.js';
 import {decodeFilAddress} from '../filaddress';
 
 describe('fsm', () => {
-  const initiator = PeerId.createFromB58String(
-    '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
-  );
   const responder = PeerId.createFromB58String(
     '12D3KooWJXBSMSn9FS1zsayZ6JK7b3HTaawNy7RKBqaWqiZbiqJb'
   );
@@ -15,12 +12,11 @@ describe('fsm', () => {
   test('handles a new payment channel', () => {
     let service: Channel | null = null;
     service = createChannel(
-      {id: 1, initiator, responder},
+      {id: 1, responder},
       {
         root: CID.parse(
           'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
         ),
-        selector: {},
         received: 0,
         totalSize: 1234,
         allReceived: false,
@@ -87,12 +83,11 @@ describe('fsm', () => {
   test('handles paych already ready', () => {
     let service: Channel | null = null;
     service = createChannel(
-      {id: 1, initiator, responder},
+      {id: 1, responder},
       {
         root: CID.parse(
           'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
         ),
-        selector: {},
         received: 0,
         totalSize: 1234,
         allReceived: false,
