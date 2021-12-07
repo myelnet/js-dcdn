@@ -25,7 +25,7 @@ import {HandlerProps} from 'libp2p';
 import BufferList from 'bl/BufferList';
 import {Blockstore} from 'interface-blockstore';
 
-const PROTOCOL = '/fil/datatransfer/1.1.0';
+export const PROTOCOL = '/fil/datatransfer/1.1.0';
 const EXTENSION = 'fil/data-transfer/1.1';
 
 interface Transport {
@@ -118,7 +118,7 @@ type DataTransferConfig = {
   defaultAddress?: Address;
 };
 
-export class DataTransfer {
+export class DataTransfer extends EventEmitter {
   network: ProtocolDialer & ProtocolHandlerRegistrar;
   transport: Transport;
   routing: ContentRoutingInterface;
@@ -136,6 +136,7 @@ export class DataTransfer {
     paychMgr,
     defaultAddress,
   }: DataTransferConfig) {
+    super();
     this.network = network;
     this.transport = transport;
     this.routing = routing;
@@ -225,10 +226,17 @@ export class DataTransfer {
           if (evt.type !== 'PAYMENT_AUTHORIZED') {
             return;
           }
-          this._processPayment(dealId, evt.amt, offer.id, ctx);
+          this._processPayment(dealId, evt.amt, offer.id, ctx)
+            .then(() => {
+              ch.send({type: 'PAYMENT_SENT', amt: evt.amt});
+            })
+            .catch((e) => ch.send({type: 'PAYMENT_FAILED', error: e.message}));
         },
       }
     );
+    ch.subscribe((state) => {
+      this.emit(state.value, state.context);
+    });
     ch.start();
     return ch;
   }
@@ -249,9 +257,9 @@ export class DataTransfer {
         case DealStatus.Accepted:
           ch.send('DEAL_ACCEPTED');
           if (ch.state.context.pricePerByte.gt(new BN(0))) {
-            this._loadFunds(ch.state.context).then((info) =>
-              ch.send({type: 'PAYCH_READY', paymentInfo: info})
-            );
+            this._loadFunds(ch.state.context).then((info) => {
+              ch.send({type: 'PAYCH_READY', paymentInfo: info});
+            });
           }
           break;
 
@@ -362,6 +370,7 @@ export class DataTransfer {
   // this means a new traversal will be started
   // then any block from that traversal can be loaded with that loader once they're available
   newLoader(root: CID, link: CID, sel: SelectorNode) {
+    let channel: Channel;
     return {
       load: async (blk: CID): Promise<Block<any>> => {
         try {
@@ -386,7 +395,7 @@ export class DataTransfer {
             // this is the actual data transfer request containing the request voucher
             // attached as an extension to the transport request
             const dataRequest = this._newRequest(offer, selblk);
-            const channel = this._createChannel(dataRequest.XferID, offer);
+            channel = this._createChannel(dataRequest.XferID, offer);
             this._channels.set(dataRequest.XferID, channel);
 
             request = this.transport.request(link, selblk);
@@ -415,6 +424,11 @@ export class DataTransfer {
           }
         }
         return request.load(blk);
+      },
+      close: () => {
+        if (channel) {
+          channel.send('ALL_BLOCKS_RECEIVED');
+        }
       },
     };
   }

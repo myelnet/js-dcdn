@@ -1,10 +1,12 @@
-import {CID, hasher} from 'multiformats';
+import {CID, hasher, bytes} from 'multiformats';
 import {Block} from 'multiformats/block';
+import {from as hasherFrom} from 'multiformats/hashes/hasher';
 import {EventEmitter} from 'events';
 // @ts-ignore (no types)
 import protons from 'protons';
 // @ts-ignore (no types)
 import vd from 'varint-decoder';
+import blakejs from 'blakejs';
 import {
   decoderFor,
   AsyncLoader,
@@ -127,6 +129,13 @@ message Message {
 }
 `);
 
+// Creating the hasher from scratch because importing from '@multiformats/blake2b' doesn't work
+const blake2b256 = hasherFrom({
+  name: 'blake2b-256',
+  code: 0xb220,
+  encode: (input) => bytes.coerce(blakejs.blake2b(input, undefined, 32)),
+});
+
 export async function decodeBlock(
   block: GraphsyncBlock,
   hashers: {[key: number]: hasher.MultihashHasher}
@@ -228,6 +237,7 @@ export class Graphsync {
   blocks: Blockstore;
   requests: Map<number, GraphsyncRequest> = new Map();
   hashers: {[key: number]: hasher.MultihashHasher} = {
+    [blake2b256.code]: blake2b256,
     [sha256.code]: sha256,
   };
   requestsByAddress: Map<string, number> = new Map();
@@ -267,8 +277,9 @@ export class Graphsync {
 
   // check if we have any ongoing request for this content
   ongoing(link: CID, sel: Block<SelectorNode>): GraphsyncRequest | undefined {
-    const id = this.requestsByAddress.get(this._reqKey(link, sel));
-    if (id) {
+    const key = this._reqKey(link, sel);
+    const id = this.requestsByAddress.get(key);
+    if (typeof id !== 'undefined') {
       const request = this.requests.get(id);
       if (request) {
         return request;
@@ -283,14 +294,18 @@ export class Graphsync {
 
   _loadBlocksForRequests(gblocks: GraphsyncBlock[], reqids: number[]) {
     for (const block of gblocks) {
-      decodeBlock(block, this.hashers).then((blk) =>
-        reqids.forEach((id) => {
-          const req = this.requests.get(id);
-          if (req) {
-            req.loader.push(blk);
-          }
-        })
-      );
+      decodeBlock(block, this.hashers)
+        .then((blk) =>
+          reqids.forEach((id) => {
+            const req = this.requests.get(id);
+            if (req) {
+              req.loader.push(blk);
+            }
+          })
+        )
+        .catch((err) => {
+          console.log(err);
+        });
     }
   }
 
@@ -336,7 +351,7 @@ export class GraphsyncRequest extends EventEmitter {
 
     this.id = id;
     this.dialer = dialer;
-    this.loader = new AsyncLoader(blocks, this.incomingBlockHook);
+    this.loader = new AsyncLoader(blocks, this.incomingBlockHook.bind(this));
     this.root = root;
     this.selector = sel;
   }
@@ -368,11 +383,11 @@ export class GraphsyncRequest extends EventEmitter {
   // incomingBlockHook is called each time a block is received and validated by the traversal
   // it will only be called for blocks coming from the network
   incomingBlockHook(block: Block<any>) {
-    super.emit('incomingBlock', {link: block.cid, size: block.bytes.length});
+    this.emit('incomingBlock', {link: block.cid, size: block.bytes.length});
   }
 
   // incomingResponseHook is called each time a new response is received for this requesy
   incomingResponseHook(resp: Response) {
-    super.emit('incomingResponse', resp);
+    this.emit('incomingResponse', resp);
   }
 }

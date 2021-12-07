@@ -441,6 +441,7 @@ export async function blockFromStore(
 
 export interface LinkLoader {
   load(cid: CID): Promise<Block<any>>;
+  close(): void;
 }
 
 export class LinkSystem implements LinkLoader {
@@ -451,6 +452,12 @@ export class LinkSystem implements LinkLoader {
   load(cid: CID): Promise<Block<any>> {
     return blockFromStore(cid, this.store);
   }
+  close() {}
+}
+
+interface Resolvable {
+  resolve: (res: Block<any>) => void;
+  reject: (res: Error) => void;
 }
 
 // AsyncLoader waits for a block to be anounced if it is not available in the blockstore
@@ -463,8 +470,8 @@ export class AsyncLoader implements LinkLoader {
   // loaded is a set of string CIDs for content that was loaded.
   // content included in the set will be flushed to the blockstore.
   loaded: Set<string> = new Set();
-  // flag if this async loader was already flushed
-  flushed = false;
+
+  pullQueue: Map<string, Resolvable[]> = new Map();
 
   constructor(store: Blockstore, tracker?: BlockNotifyFn) {
     this.store = store;
@@ -489,22 +496,31 @@ export class AsyncLoader implements LinkLoader {
     }
   }
   async waitForBlock(cid: CID): Promise<Block<any>> {
-    // this is faster than queueing a promise
-    while (true) {
-      await Promise.resolve();
-      const block = this.pending.get(cid.toString());
-      if (block) {
-        return block;
-      }
-      if (this.loaded.has(cid.toString())) {
-        return blockFromStore(cid, this.store);
-      }
+    const block = this.pending.get(cid.toString());
+    if (block) {
+      return block;
     }
+    if (this.loaded.has(cid.toString())) {
+      return blockFromStore(cid, this.store);
+    }
+
+    return new Promise((resolve, reject) => {
+      this.pullQueue.set(
+        cid.toString(),
+        (this.pullQueue.get(cid.toString()) ?? []).concat({resolve, reject})
+      );
+    });
   }
+
   // these are trusted blocks and don't need to be verified
   push(block: Block<any>) {
     const k = block.cid.toString();
-    this.pending.set(k, block);
+    const pending = this.pullQueue.get(k);
+    if (pending) {
+      pending.forEach((p) => p.resolve(block));
+    } else {
+      this.pending.set(k, block);
+    }
   }
   flush(blk: Block<any>) {
     if (!this.loaded.has(blk.cid.toString())) {
@@ -513,6 +529,10 @@ export class AsyncLoader implements LinkLoader {
         .put(blk.cid, new Uint8Array(blk.bytes))
         .then(() => this.pending.delete(blk.cid.toString()));
     }
+  }
+  // cleanup any block in memory
+  close() {
+    this.pending = new Map();
   }
 }
 
@@ -727,6 +747,7 @@ export async function* traverse(
     load: (cid: CID): Promise<Block<any>> => {
       return resolver.loadOrRequest(root, link, sel, cid);
     },
+    close: () => {},
   };
   yield* walk(new Node(link), parseContext().parseSelector(sel), loader);
 }
@@ -801,6 +822,7 @@ export function offlineLoader(blocks: Blockstore) {
     newLoader(root: CID, link: CID, sel: SelectorNode) {
       return {
         load: (cid: CID) => blockFromStore(cid, blocks),
+        close: () => {},
       };
     },
   };
@@ -824,7 +846,10 @@ export async function* resolve(
     }
     // for unixfs unless we know the index of the path we're looking for
     // we must recursively request the entries to find the link hash
-    const sel = getSelector(segs.length === 0 ? '*' : '/');
+    // a trailing slash at the end of a path will treat it as a directory
+    const sel = getSelector(
+      segs.length === 0 && path[path.length - 1] !== '/' ? '*' : '/'
+    );
     const loader = lf.newLoader(root, cid, sel);
     incomingBlocks: for await (const blk of walk(
       new Node(cid),
@@ -891,5 +916,7 @@ export async function* resolve(
         continue incomingBlocks;
       }
     }
+    // tell the loader we're done receiving blocks for this traversal
+    loader.close();
   } while (!isLast);
 }

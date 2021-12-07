@@ -27,10 +27,12 @@ import {pipe} from 'it-pipe';
 import drain from 'it-drain';
 import {importer} from 'ipfs-unixfs-importer';
 import {DealOffer} from '../routing';
-import {Graphsync} from '../graphsync';
+import {Graphsync, PROTOCOL as GS_PROTO} from '../graphsync';
 import {Secp256k1Signer} from '../signer';
-import {DataTransfer} from '../data-transfer';
+import {DataTransfer, PROTOCOL as DT_PROTO} from '../data-transfer';
 import {PaychMgr} from '../PaychMgr';
+import lp from 'it-length-prefixed';
+import BufferList from 'bl/BufferList';
 
 global.crypto = {
   subtle: {
@@ -40,18 +42,34 @@ global.crypto = {
   },
 };
 
-async function* gsTwoBlocks(): AsyncIterable<Uint8Array> {
-  yield fix.gsMsg1;
-  yield fix.gsMsg2;
+async function* gsTwoBlocks(): AsyncIterable<BufferList> {
+  yield lp.encode.single(Buffer.from(fix.gsMsg1));
+  yield lp.encode.single(Buffer.from(fix.gsMsg2));
 }
-async function* gsOneBlock(): AsyncIterable<Uint8Array> {
-  yield fix.gsMsgSingleBlock;
+
+async function* dtMsgCompleted(): AsyncIterable<BufferList> {
+  const bl = new BufferList();
+  bl.append(Buffer.from(fix.dtMsgCompleted));
+  yield bl;
 }
-async function* gsFirstBlock(): AsyncIterable<Uint8Array> {
-  yield fix.gsMsg1;
+async function* gsOneBlock(): AsyncIterable<BufferList> {
+  yield lp.encode.single(Buffer.from(fix.gsMsgSingleBlock));
 }
-async function* gs2ndBlock(): AsyncIterable<Uint8Array> {
-  yield fix.gsMsg2;
+async function* dtMsgSingleBlockCompleted(): AsyncIterable<BufferList> {
+  const bl = new BufferList();
+  bl.append(Buffer.from(fix.dtMsgSingleBlockComplete));
+  yield bl;
+}
+async function* gsFirstBlock(): AsyncIterable<BufferList> {
+  yield lp.encode.single(Buffer.from(fix.gsMsg1));
+}
+async function* gs2ndBlock(): AsyncIterable<BufferList> {
+  yield lp.encode.single(Buffer.from(fix.gsMsg2));
+}
+async function* dtMsgPaymentReq(): AsyncIterable<BufferList> {
+  const bl = new BufferList();
+  bl.append(Buffer.from(fix.dtMsgPaymentReq));
+  yield bl;
 }
 
 describe('MyelClient', () => {
@@ -184,7 +202,8 @@ describe('MyelClient', () => {
     }
     expect(buf).toEqual(forth);
   });
-  test.skip('handles a free transfer async', async () => {
+
+  test('handles a free transfer async', async () => {
     const rpc = new MockRPCProvider();
     const blocks = new MemoryBlockstore();
     const libp2p = new MockLibp2p(
@@ -192,19 +211,10 @@ describe('MyelClient', () => {
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
       )
     );
+    libp2p.sources = {
+      '0': gsTwoBlocks(),
+    };
     const routing = new MockRouting();
-
-    const exchange = new Graphsync(libp2p, blocks);
-    exchange.start();
-    const signer = new Secp256k1Signer();
-    const paychMgr = new PaychMgr({filRPC: rpc, signer});
-    const dt = new DataTransfer({
-      transport: exchange,
-      routing,
-      network: libp2p,
-      paychMgr,
-    });
-    dt._dealId = 1627988723469;
 
     const offer = {
       id: PeerId.createFromB58String(
@@ -219,29 +229,14 @@ describe('MyelClient', () => {
         'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
       ),
       size: 226500,
-      paymentAddress: signer.genPrivate(),
       minPricePerByte: new BN(0),
       maxPaymentInterval: 0,
       maxPaymentIntervalIncrease: 0,
     };
     routing.provide(offer.cid, offer);
 
-    const root = offer.cid;
-  });
-
-  test.skip('handles a one block transfer', async () => {
-    const rpc = new MockRPCProvider();
-    const blocks = new MemoryBlockstore();
-    const libp2p = new MockLibp2p(
-      PeerId.createFromB58String(
-        '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
-      )
-    );
-    const routing = new MockRouting();
-
     const exchange = new Graphsync(libp2p, blocks);
     exchange.start();
-
     const signer = new Secp256k1Signer();
     const paychMgr = new PaychMgr({filRPC: rpc, signer});
     const dt = new DataTransfer({
@@ -250,9 +245,42 @@ describe('MyelClient', () => {
       network: libp2p,
       paychMgr,
     });
+    dt._dealId = 1627988723469;
+    dt.start();
 
-    dt._dealId = 1630453456080;
+    dt.once('ongoing', () => {
+      libp2p.handlers[DT_PROTO]({
+        // @ts-ignore
+        stream: {source: dtMsgCompleted(), sink: drain},
+      });
+    });
+    const onCompleted = jest.fn();
+    dt.on('completed', (context) =>
+      onCompleted(context.received, context.allReceived)
+    );
+    await drain(
+      resolve(
+        'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq',
+        dt
+      )
+    );
+    await Promise.resolve();
+    expect(onCompleted).toBeCalledTimes(1);
+    expect(onCompleted).toBeCalledWith(1214, true);
+  });
 
+  test('handles a one block transfer', async () => {
+    const rpc = new MockRPCProvider();
+    const blocks = new MemoryBlockstore();
+    const libp2p = new MockLibp2p(
+      PeerId.createFromB58String(
+        '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
+      )
+    );
+    libp2p.sources = {
+      '0': gsOneBlock(),
+    };
+    const routing = new MockRouting();
     const ppid = PeerId.createFromB58String(
       '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
     );
@@ -268,15 +296,46 @@ describe('MyelClient', () => {
         'bafyreigae5sia65thtb3a73vudwi3rsxqscqnkh2mtx7jqjlq5xl72k7ba'
       ),
       size: 326,
-      paymentAddress: signer.genPrivate(),
       minPricePerByte: new BN(0),
       maxPaymentInterval: 0,
       maxPaymentIntervalIncrease: 0,
     };
     routing.provide(offer.cid, offer);
+
+    const exchange = new Graphsync(libp2p, blocks);
+    exchange.start();
+
+    const signer = new Secp256k1Signer();
+    const paychMgr = new PaychMgr({filRPC: rpc, signer});
+    const dt = new DataTransfer({
+      transport: exchange,
+      routing,
+      network: libp2p,
+      paychMgr,
+    });
+    dt._dealId = 1630453456080;
+    dt.start();
+
+    dt.once('ongoing', () => {
+      libp2p.handlers[DT_PROTO]({
+        // @ts-ignore
+        stream: {source: dtMsgSingleBlockCompleted(), sink: drain},
+      });
+    });
+    const onCompleted = jest.fn();
+    dt.on('completed', (ctx) => onCompleted(ctx.received, ctx.allReceived));
+    await drain(
+      resolve(
+        'bafyreigae5sia65thtb3a73vudwi3rsxqscqnkh2mtx7jqjlq5xl72k7ba/',
+        dt
+      )
+    );
+    await Promise.resolve();
+    expect(onCompleted).toBeCalledTimes(1);
+    expect(onCompleted).toBeCalledWith(326, true);
   });
 
-  describe.skip('handles paid transfers', () => {
+  describe('handles paid transfers', () => {
     const rpc = new MockRPCProvider();
 
     // prepare payment mocks
@@ -315,11 +374,6 @@ describe('MyelClient', () => {
       },
     });
 
-    const libp2p = new MockLibp2p(
-      PeerId.createFromB58String(
-        '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
-      )
-    );
     const ppid = PeerId.createFromB58String(
       '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
     );
@@ -328,17 +382,32 @@ describe('MyelClient', () => {
       [300, 'completed'],
       [0, 'completed'],
     ])('whith timeout %i', async (timeout, endstate) => {
+      const libp2p = new MockLibp2p(
+        PeerId.createFromB58String(
+          '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
+        )
+      );
+      libp2p.sources = {
+        '0': gsFirstBlock(),
+      };
+
       const blocks = new MemoryBlockstore();
       const routing = new MockRouting();
+      const exchange = new Graphsync(libp2p, blocks);
+      exchange.start();
+
+      const signer = new Secp256k1Signer();
+      const paychMgr = new PaychMgr({filRPC: rpc, signer, msgTimeout: timeout});
       // start a new client each time as we're using the same request id
-      const client = new Client({
-        rpc,
-        blocks,
-        libp2p,
-        rpcMsgTimeout: timeout,
+      const dt = new DataTransfer({
+        defaultAddress: signer.genPrivate(),
+        transport: exchange,
         routing,
+        network: libp2p,
+        paychMgr,
       });
-      client._dealId = 1627988723469;
+      dt._dealId = 1627988723469;
+      dt.start();
 
       const offer = {
         id: ppid,
@@ -351,25 +420,75 @@ describe('MyelClient', () => {
           'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
         ),
         size: 1214,
-        paymentAddress: client.signer.genPrivate(),
+        paymentAddress: signer.genPrivate(),
         minPricePerByte: new BN(1),
         maxPaymentInterval: 1 << 20,
         maxPaymentIntervalIncrease: 1 << 20,
       };
       routing.provide(offer.cid, offer);
+
+      dt.on('ongoing', (state) => {
+        if (state.fundsSpent.gt(new BN(0))) {
+          libp2p.handlers[DT_PROTO]({
+            // @ts-ignore
+            stream: {source: dtMsgCompleted(), sink: drain},
+          });
+        } else if (state.allReceived) {
+          libp2p.handlers[DT_PROTO]({
+            // @ts-ignore
+            stream: {source: dtMsgPaymentReq(), sink: drain},
+          });
+        } else if (state.received === 87 && state.paymentInfo) {
+          libp2p.handlers[GS_PROTO]({
+            // @ts-ignore
+            stream: {source: gs2ndBlock(), sink: drain},
+          });
+        }
+      });
+
+      const results: any[] = await Promise.all([
+        drain(
+          resolve(
+            'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq',
+            dt
+          )
+        ),
+        new Promise((resolve) => {
+          dt.on('completed', resolve);
+        }),
+      ]);
+      expect(results[1].received).toEqual(1214);
+      expect(results[1].allReceived).toBe(true);
+      expect(results[1].fundsSpent.eq(new BN(1214))).toBe(true);
     });
 
     test('immediate payment request', async () => {
+      const libp2p = new MockLibp2p(
+        PeerId.createFromB58String(
+          '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
+        )
+      );
+      libp2p.sources = {
+        '0': gsFirstBlock(),
+      };
+
       const blocks = new MemoryBlockstore();
       const routing = new MockRouting();
-      const client = new Client({
-        rpc,
-        blocks,
-        libp2p,
-        rpcMsgTimeout: 300,
+      const exchange = new Graphsync(libp2p, blocks);
+      exchange.start();
+
+      const signer = new Secp256k1Signer();
+      const paychMgr = new PaychMgr({filRPC: rpc, signer, msgTimeout: 300});
+      // start a new client each time as we're using the same request id
+      const dt = new DataTransfer({
+        defaultAddress: signer.genPrivate(),
+        transport: exchange,
         routing,
+        network: libp2p,
+        paychMgr,
       });
-      client._dealId = 1627988723469;
+      dt._dealId = 1627988723469;
+      dt.start();
 
       const offer = {
         id: ppid,
@@ -382,16 +501,50 @@ describe('MyelClient', () => {
           'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
         ),
         size: 1214,
-        paymentAddress: client.signer.genPrivate(),
+        paymentAddress: signer.genPrivate(),
         minPricePerByte: new BN(1),
         maxPaymentInterval: 1 << 20,
         maxPaymentIntervalIncrease: 1 << 20,
       };
       routing.provide(offer.cid, offer);
+
+      dt.on('ongoing', (state) => {
+        if (state.fundsSpent.gt(new BN(0))) {
+          libp2p.handlers[DT_PROTO]({
+            // @ts-ignore
+            stream: {source: dtMsgCompleted(), sink: drain},
+          });
+        } else if (state.received === 87 && state.paymentInfo) {
+          libp2p.handlers[GS_PROTO]({
+            // @ts-ignore
+            stream: {source: gs2ndBlock(), sink: drain},
+          });
+          libp2p.handlers[DT_PROTO]({
+            // @ts-ignore
+            stream: {source: dtMsgPaymentReq(), sink: drain},
+          });
+        }
+      });
+
+      const results: any[] = await Promise.all([
+        drain(
+          resolve(
+            'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq',
+            dt
+          )
+        ),
+        new Promise((resolve) => {
+          dt.on('completed', resolve);
+        }),
+      ]);
+
+      expect(results[1].received).toEqual(1214);
+      expect(results[1].allReceived).toBe(true);
+      expect(results[1].fundsSpent.eq(new BN(1214))).toBe(true);
     });
   });
 
-  test.skip('load payment from an existing channel', async () => {
+  test('load payment from an existing channel', async () => {
     const rpc = new MockRPCProvider();
 
     // prepare payment mocks
@@ -453,19 +606,30 @@ describe('MyelClient', () => {
         '12D3KooWSoLzampfxc4t3sy9z7yq1Cgzbi7zGXpV7nvt5hfeKUhR'
       )
     );
+    libp2p.sources = {
+      '0': gsFirstBlock(),
+    };
+
     const ppid = PeerId.createFromB58String(
       '12D3KooWHFrmLWTTDD4NodngtRMEVYgxrsDMp4F9iSwYntZ9WjHa'
     );
 
     const routing = new MockRouting();
-    const client = new Client({
-      rpc,
-      blocks,
-      libp2p,
-      rpcMsgTimeout: 0, // no important since this transfer shouldn't require onchain messages
+    const exchange = new Graphsync(libp2p, blocks);
+    exchange.start();
+
+    const signer = new Secp256k1Signer();
+    const paychMgr = new PaychMgr({filRPC: rpc, signer, msgTimeout: 0});
+    // start a new client each time as we're using the same request id
+    const dt = new DataTransfer({
+      defaultAddress: signer.genPrivate(),
+      transport: exchange,
       routing,
+      network: libp2p,
+      paychMgr,
     });
-    client._dealId = 1627988723469;
+    dt._dealId = 1627988723469;
+    dt.start();
 
     const offer = {
       id: ppid,
@@ -478,7 +642,7 @@ describe('MyelClient', () => {
         'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq'
       ),
       size: 1214,
-      paymentAddress: client.signer.genPrivate(),
+      paymentAddress: signer.genPrivate(),
       minPricePerByte: new BN(1),
       maxPaymentInterval: 1 << 20,
       maxPaymentIntervalIncrease: 1 << 20,
@@ -487,5 +651,40 @@ describe('MyelClient', () => {
       ),
     };
     routing.provide(offer.cid, offer);
+
+    dt.on('ongoing', (state) => {
+      if (state.fundsSpent.gt(new BN(0))) {
+        libp2p.handlers[DT_PROTO]({
+          // @ts-ignore
+          stream: {source: dtMsgCompleted(), sink: drain},
+        });
+      } else if (state.allReceived) {
+        libp2p.handlers[DT_PROTO]({
+          // @ts-ignore
+          stream: {source: dtMsgPaymentReq(), sink: drain},
+        });
+      } else if (state.received === 87 && state.paymentInfo) {
+        libp2p.handlers[GS_PROTO]({
+          // @ts-ignore
+          stream: {source: gs2ndBlock(), sink: drain},
+        });
+      }
+    });
+
+    const results: any[] = await Promise.all([
+      drain(
+        resolve(
+          'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq',
+          dt
+        )
+      ),
+      new Promise((resolve) => {
+        dt.on('completed', resolve);
+      }),
+    ]);
+
+    expect(results[1].received).toEqual(1214);
+    expect(results[1].allReceived).toBe(true);
+    expect(results[1].fundsSpent.eq(new BN(1214))).toBe(true);
   });
 });

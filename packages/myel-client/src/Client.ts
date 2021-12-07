@@ -711,9 +711,17 @@ export class Client {
     }
   }
 
+  newLoader(root: CID, link: CID, sel: SelectorNode) {
+    return {
+      load: async (blk: CID): Promise<Block<any>> => {
+        return blockFromStore(blk, this.blocks);
+      },
+    };
+  }
+
   // fetch exposes an API similar to the FetchAPI
   async fetch(url: string, init: FetchInit = {headers: {}}): Promise<Response> {
-    const content = resolve(url, this.resolve);
+    const content = resolve(url, this);
     const iterator = content[Symbol.asyncIterator]();
     const headers = init.headers;
 

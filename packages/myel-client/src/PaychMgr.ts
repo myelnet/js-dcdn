@@ -442,6 +442,7 @@ export class PayCh {
       } catch (e) {
         console.log(e);
       }
+      retries++;
     }
     // throw after all retries
     throw new Error('Message failed to execute');

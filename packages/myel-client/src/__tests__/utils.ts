@@ -143,8 +143,10 @@ export class MockLibp2p {
       stream,
       protocol: typeof protocols === 'string' ? protocols : protocols[0],
     };
-    // @ts-ignore
-    this.handlers[conn.protocol]({stream, connection: conn});
+    if (id in this.sources) {
+      // @ts-ignore
+      this.handlers[conn.protocol]({stream, connection: conn});
+    }
     return conn;
   }
 }
