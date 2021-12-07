@@ -380,6 +380,9 @@ export class GraphsyncRequest extends EventEmitter {
     return this.loader.load(link);
   }
 
+  // TODO
+  close() {}
+
   // incomingBlockHook is called each time a block is received and validated by the traversal
   // it will only be called for blocks coming from the network
   incomingBlockHook(block: Block<any>) {
