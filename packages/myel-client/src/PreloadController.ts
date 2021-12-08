@@ -11,7 +11,6 @@ import {Multiaddr} from 'multiaddr';
 import {Blockstore, MemoryBlockstore} from 'interface-blockstore';
 import {Datastore} from 'interface-Datastore';
 import drain from 'it-drain';
-import {Client} from './Client';
 import {DealOffer, ContentRoutingInterface} from './routing';
 import {
   getSelector,
@@ -19,12 +18,17 @@ import {
   allSelector,
   decoderFor,
   SelectorNode,
-  toPathComponents,
 } from './selectors';
+import {fetch, toPathComponents, resolve} from './resolver';
 import {FilRPC} from './FilRPC';
 import {ChannelState} from './fsm';
 import {decodeFilAddress} from './filaddress';
 import {BlockstoreAdapter} from './BlockstoreAdapter';
+import {DataTransfer} from './data-transfer';
+import {Graphsync} from './graphsync';
+import {Secp256k1Signer} from './signer';
+import {PaychMgr} from './PaychMgr';
+import {ContentRouting, FetchRecordLoader} from './routing';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -48,7 +52,7 @@ type ContentEntry = {
 };
 
 export class PreloadController {
-  private _client?: Client;
+  private _dt?: DataTransfer;
   private _installAndActiveListenersAdded?: boolean;
   private readonly _cidToContentEntry: Map<string, ContentEntry> = new Map();
   private readonly _options: ControllerOptions;
@@ -64,15 +68,17 @@ export class PreloadController {
       self.addEventListener('install', this.install);
       self.addEventListener('activate', this.activate);
       self.addEventListener('fetch', ((event: FetchEvent) => {
-        if (!this._client) {
+        if (!this._dt) {
           return;
         }
         const url = new URL(event.request.url);
         event.respondWith(
-          this._client.fetch(url.pathname, {headers: {}}).catch((err) => {
-            console.log(err);
-            return fetch(event.request);
-          })
+          fetch(url.pathname, {headers: {}, loaderFactory: this._dt}).catch(
+            (err) => {
+              console.log(err);
+              return global.fetch(event.request);
+            }
+          )
         );
       }) as EventListener);
       this._installAndActiveListenersAdded = true;
@@ -100,24 +106,32 @@ export class PreloadController {
       const libp2p = await Libp2p.create(this._options.libp2p);
       await libp2p.start();
 
-      this._client = new Client({
-        libp2p,
-        blocks,
-        rpc: new FilRPC('https://infura.myel.cloud'),
-        routing: this._options.routing,
+      const exchange = new Graphsync(libp2p, blocks);
+      exchange.start();
+
+      const signer = new Secp256k1Signer();
+      const paychMgr = new PaychMgr({
+        filRPC: new FilRPC('https://infura.myel.cloud'),
+        signer,
       });
 
-      if (this._options.privateKey) {
-        const addr = this._client.importKey(this._options.privateKey);
-        console.log('imported key for address', addr.toString());
-      }
+      const addr = this._options.privateKey
+        ? signer.toPublic(this._options.privateKey)
+        : signer.genPrivate();
 
-      for (const [cid, entry] of this._cidToContentEntry) {
-        const root = CID.parse(cid);
-        await drain(
-          this._client.resolve(root, root, getSelector(entry.selector))
-        );
-      }
+      const dt = new DataTransfer({
+        transport: exchange,
+        routing:
+          this._options.routing ??
+          new ContentRouting({
+            loader: new FetchRecordLoader('https://routing.myel.workers.dev'),
+          }),
+        network: libp2p,
+        paychMgr,
+        defaultAddress: addr,
+      });
+      dt.start();
+      this._dt = dt;
       return self.skipWaiting();
     })();
     event.waitUntil(promise);

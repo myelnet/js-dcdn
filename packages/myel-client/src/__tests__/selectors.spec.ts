@@ -7,7 +7,7 @@ import {
   LinkSystem,
   AsyncLoader,
   traversal,
-  walk,
+  walkBlocks,
   Node,
 } from '../selectors';
 import {CID} from 'multiformats';
@@ -623,7 +623,11 @@ describe('selectors', () => {
 
     let i = 0;
 
-    for await (const blk of walk(new Node(grandparent.cid), sel, source)) {
+    for await (const blk of walkBlocks(
+      new Node(grandparent.cid),
+      sel,
+      source
+    )) {
       switch (i) {
         case 0:
           expect(blk.cid.toString()).toEqual(grandparent.cid.toString());

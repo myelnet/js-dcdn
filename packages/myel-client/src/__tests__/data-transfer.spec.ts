@@ -59,7 +59,7 @@ async function* dtMsgPaymentReq(): AsyncIterable<BufferList> {
   yield bl;
 }
 
-describe('MyelClient', () => {
+describe('DataTransfer', () => {
   test('handles a free transfer async', async () => {
     const rpc = new MockRPCProvider();
     const blocks = new MemoryBlockstore();
@@ -115,12 +115,21 @@ describe('MyelClient', () => {
     dt.on('completed', (context) =>
       onCompleted(context.received, context.allReceived)
     );
-    await drain(
-      resolve(
-        'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq',
-        dt
-      )
-    );
+    await Promise.all([
+      drain(
+        resolve(
+          'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq',
+          dt
+        )
+      ),
+      // test duplicate queries in parallel
+      drain(
+        resolve(
+          'bafy2bzaceafciokjlt5v5l53pftj6zcmulc2huy3fduwyqsm3zo5bzkau7muq',
+          dt
+        )
+      ),
+    ]);
     await Promise.resolve();
     expect(onCompleted).toBeCalledTimes(1);
     expect(onCompleted).toBeCalledWith(1214, true);

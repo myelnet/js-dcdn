@@ -5,6 +5,15 @@ import * as dagCBOR from '@ipld/dag-cbor';
 import {importer} from 'ipfs-unixfs-importer';
 import {resolve, offlineLoader} from '../resolver';
 import {concat} from '../filaddress';
+import crypto from 'crypto';
+
+global.crypto = {
+  subtle: {
+    // @ts-ignore
+    digest: (name: string, data: Uint8Array) =>
+      crypto.createHash('sha256').update(data).digest(),
+  },
+};
 
 describe('resolver', () => {
   test('cbor resolver', async () => {

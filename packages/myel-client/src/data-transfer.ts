@@ -382,9 +382,7 @@ export class DataTransfer extends EventEmitter {
         // or with an ongoing request
         let request = this.transport.ongoing(link, selblk);
         if (!request) {
-          if (!this.started) {
-            throw new Error('data transfer is not listening');
-          }
+          request = this.transport.request(link, selblk);
 
           const offers = this.routing
             .findProviders(root, {selector: sel})
@@ -398,7 +396,6 @@ export class DataTransfer extends EventEmitter {
             channel = this._createChannel(dataRequest.XferID, offer);
             this._channels.set(dataRequest.XferID, channel);
 
-            request = this.transport.request(link, selblk);
             request.on('incomingBlock', ({size}) => {
               channel.send({
                 type: 'BLOCK_RECEIVED',
