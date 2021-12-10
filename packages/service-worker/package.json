@@ -1,0 +1,30 @@
+{
+  "name": "@dcdn/service-worker",
+  "version": "0.0.1",
+  "description": "Service worker hooks for fetching content from a decentralized network of cache providers",
+  "main": "dist/src/index.js",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "author": "Myel <thomas@myel.dev>",
+  "license": "MIT",
+  "scripts": {
+    "build": "aegir build"
+  },
+  "devDependencies": {
+    "aegir": "^36.0.2"
+  },
+  "dependencies": {
+    "@chainsafe/libp2p-noise": "^5.0.0",
+    "@dcdn/cachestore": "^0.0.1",
+    "@dcdn/data-transfer": "^0.0.1",
+    "@dcdn/graphsync": "^0.0.1",
+    "@dcdn/routing": "^0.0.1",
+    "libp2p": "^0.33.0",
+    "libp2p-mplex": "^0.10.5",
+    "libp2p-websockets": "^0.16.2",
+    "multiformats": "^9.5.4"
+  },
+  "types": "dist/src/index.d.ts"
+}

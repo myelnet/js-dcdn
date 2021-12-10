@@ -1,0 +1,28 @@
+{
+  "name": "@dcdn/ipld-selectors",
+  "version": "0.0.1",
+  "description": "Tools for declaring, generating and parsing IPLD selectors",
+  "main": "dist/src/index.js",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "author": "Myel <thomas@myel.dev>",
+  "license": "MIT",
+  "scripts": {
+    "build": "aegir build",
+    "test": "aegir test"
+  },
+  "devDependencies": {
+    "aegir": "^36.0.2",
+    "blockstore-core": "^1.0.2",
+    "it-all": "^1.0.6"
+  },
+  "dependencies": {
+    "@ipld/dag-cbor": "^6.0.15",
+    "@ipld/dag-pb": "^2.1.15",
+    "interface-store": "^2.0.1",
+    "multiformats": "^9.5.4"
+  },
+  "types": "dist/src/index.d.ts"
+}

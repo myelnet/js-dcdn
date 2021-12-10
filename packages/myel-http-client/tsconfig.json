@@ -1,9 +1,0 @@
-{
-  "compilerOptions": {
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "target": "esnext",
-    "baseUrl": ".",
-    "strict": true
-  }
-}

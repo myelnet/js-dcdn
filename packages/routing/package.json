@@ -1,0 +1,27 @@
+{
+  "name": "@dcdn/routing",
+  "version": "0.0.1",
+  "description": "Content routing implementations",
+  "main": "dist/src/index.js",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "author": "Myel <thomas@myel.dev>",
+  "license": "MIT",
+  "scripts": {
+    "build": "aegir build"
+  },
+  "devDependencies": {
+    "aegir": "^36.0.2"
+  },
+  "dependencies": {
+    "@dcdn/fil-address": "^0.0.1",
+    "@ipld/dag-cbor": "^6.0.15",
+    "bn.js": "^5.2.0",
+    "multiaddr": "^10.0.0",
+    "multiformats": "^9.5.4",
+    "peer-id": "^0.16.0"
+  },
+  "types": "dist/src/index.d.ts"
+}

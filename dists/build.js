@@ -110,8 +110,8 @@ let dedupePlugin = {
 (async () => {
   const result = await esbuild.build({
     entryPoints: {
-      worker: 'src/cfw.ts',
-      sw: 'src/sw.ts',
+      // worker: 'src/cfw.ts',
+      // sw: 'src/sw.ts',
       MyelClient: 'src/client.ts',
     },
     bundle: true,

@@ -4,18 +4,24 @@ import {Noise} from 'libp2p-noise/dist/src/noise';
 import Mplex from 'libp2p-mplex';
 import {create} from 'libp2p';
 import {
-  Client,
+  Graphsync,
+  DataTransfer,
+  fetch,
+  PaychMgr,
   CacheBlockstore,
   FilRPC,
+  Secp256k1Signer,
   ContentRouting,
   FetchRecordLoader,
-} from 'myel-client';
+} from 'dcdn';
 import {fromString} from 'uint8arrays/from-string';
 import {Buffer} from 'buffer';
 
 declare global {
   interface Window {
-    MClient: Client;
+    MClient: {
+      fetch: (path: string, init: any) => Promise<Response>;
+    };
   }
 }
 
@@ -48,24 +54,27 @@ const NOISE_PRIVKEY = 'Tf2k6XuVyGIw8GCMPCnSibJFGsYezlSYTvr3biM0nxM=';
     });
     await libp2p.start();
 
-    let chunkId = 1;
-
-    window.MClient = new Client({
-      libp2p,
-      blocks,
-      rpc: new FilRPC('https://infura.myel.cloud'),
-      routing: new ContentRouting({
-        loader: new FetchRecordLoader('/routing'),
-      }),
-      exportChunk: (blob: Blob) => {
-        const textFile = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('download', 'info.txt');
-        link.href = textFile;
-        const ltxt = document.createTextNode('Download chunk ' + ++chunkId);
-        link.appendChild(ltxt);
-        document.body.appendChild(link);
-      },
+    const routing = new ContentRouting({
+      loader: new FetchRecordLoader('/routing'),
     });
+    const exchange = new Graphsync(libp2p, blocks);
+    exchange.start();
+
+    const signer = new Secp256k1Signer();
+    const paychMgr = new PaychMgr({
+      filRPC: new FilRPC('https://infura.myel.cloud'),
+      signer,
+    });
+    const dt = new DataTransfer({
+      transport: exchange,
+      routing,
+      network: libp2p,
+      paychMgr,
+    });
+    dt.start();
+    window.MClient = {
+      fetch: (path: string, init: any) =>
+        fetch(path, {headers: {}, loaderFactory: dt}),
+    };
   }
 })();
