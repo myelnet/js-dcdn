@@ -21,7 +21,7 @@ export function toPathComponents(path = ''): string[] {
   return (path.trim().match(/([^\\^/]|\\\/)+/g) || []).filter(Boolean);
 }
 
-function parsePath(path: string): {root: CID; segments: string[]} {
+export function parsePath(path: string): {root: CID; segments: string[]} {
   const comps = toPathComponents(path);
   const root = CID.parse(comps[0]);
   return {
