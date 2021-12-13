@@ -35,7 +35,7 @@ export class Controller {
 
   install(event: ExtendableEvent): Promise<void> {
     const promise = (async () => {
-      this._client = await create();
+      this._client = await create({fetchRecordUri: '/routing'});
       return self.skipWaiting();
     })();
     event.waitUntil(promise);

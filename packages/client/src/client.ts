@@ -1,6 +1,4 @@
 // @ts-ignore no types
-import Websockets from 'libp2p-websockets';
-// @ts-ignore no types
 import filters from 'libp2p-websockets/src/filters';
 // @ts-ignore no types
 import Mplex from 'libp2p-mplex';
@@ -26,6 +24,7 @@ import type {CID} from 'multiformats';
 import PeerId from 'peer-id';
 import {Buffer} from 'buffer';
 import {fromString} from 'uint8arrays/from-string';
+import {WSTransport} from './ws-transport';
 
 export interface Client {
   dataTransfer: DataTransfer;
@@ -66,13 +65,13 @@ export async function create(options: CreateOptions = {}): Promise<Client> {
 
   const libp2p = await createLibp2p({
     modules: {
-      transport: [Websockets],
+      transport: [WSTransport],
       connEncryption: [noise],
       streamMuxer: [Mplex],
     },
     config: {
       transport: {
-        [Websockets.prototype[Symbol.toStringTag]]: {
+        [WSTransport.prototype[Symbol.toStringTag]]: {
           filter: filters.all,
         },
       },

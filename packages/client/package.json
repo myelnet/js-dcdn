@@ -24,6 +24,7 @@
     "buffer": "^6.0.3",
     "interface-store": "^2.0.1",
     "libp2p": "^0.33.0",
+    "libp2p-interfaces": "^1.0.0",
     "libp2p-mplex": "^0.10.5",
     "libp2p-websockets": "^0.16.2",
     "multiformats": "^9.5.4",
