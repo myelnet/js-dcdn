@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@dcdn/test-utils": "^0.0.1",
+    "@stablelib/benchmark": "^1.0.1",
     "@types/bl": "^5.0.1",
     "@types/elliptic": "^6.4.13",
     "@types/mime": "^2.0.3",

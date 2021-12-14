@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@dcdn/test-utils": "^0.0.1",
+    "@stablelib/benchmark": "^1.0.1",
     "@types/bl": "^5.0.1",
     "aegir": "^36.0.2",
     "blockstore-core": "^1.0.2",

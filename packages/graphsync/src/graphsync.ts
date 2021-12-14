@@ -244,7 +244,7 @@ export class Graphsync {
   async _handler(props: HandlerProps) {
     const source = props.stream.source as AsyncIterable<BufferList>;
     for await (const chunk of lp.decode()(source)) {
-      const msg: Message = await gsProto.Message.decode(chunk.slice());
+      const msg: Message = gsProto.Message.decode(chunk.slice());
       if (msg.data && msg.responses) {
         this._loadBlocksForRequests(
           msg.data,
