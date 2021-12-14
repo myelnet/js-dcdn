@@ -2,7 +2,8 @@
   "name": "dcdn",
   "private": true,
   "scripts": {
-    "build": "lerna run build"
+    "build": "lerna run build",
+    "test": "lerna run --concurrency 1 test"
   },
   "workspaces": [
     "packages/*"
