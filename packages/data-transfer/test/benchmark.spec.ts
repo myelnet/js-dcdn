@@ -13,7 +13,7 @@ import {DataTransfer} from '../src/data-transfer';
 import {PaychMgr} from '../src/paychmgr';
 import {Secp256k1Signer} from '../src/signer';
 
-describe('benchmark', () => {
+describe.skip('benchmark', () => {
   it('streams blocks', async () => {
     // compare to reading directly
     report(

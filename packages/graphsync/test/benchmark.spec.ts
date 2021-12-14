@@ -14,7 +14,7 @@ import {
 } from '@dcdn/ipld-selectors';
 import {Graphsync} from '../src/graphsync';
 
-describe('benchmark', () => {
+describe.skip('benchmark', () => {
   it('streams blocks', async () => {
     // compare to reading directly
     report(

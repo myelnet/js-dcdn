@@ -7,10 +7,6 @@ import type {
 import type {Multiaddr} from 'multiaddr';
 import {Buffer} from 'buffer';
 
-type ConnectOptions = {
-  cloudflareWorker?: boolean;
-};
-
 type AsyncResolver<T> = {
   resolve: (res: IteratorResult<T>) => void;
   reject: (err: Error) => void;
@@ -113,12 +109,16 @@ function msgQueue<T>() {
 
 async function connect(
   addr: Multiaddr,
-  opts: ConnectOptions = {}
+  opts: any = {}
 ): Promise<MultiaddrConnection> {
   const uri = toUri(addr);
 
   let target: EventTarget;
-  if (opts.cloudflareWorker) {
+  try {
+    const socket = new WebSocket(uri);
+    socket.binaryType = 'arraybuffer';
+    target = socket;
+  } catch (e) {
     // since the WebSocket object is not available in cloudflare workers we
     // have to ask the worker environment to upgrade the http request
     const resp = await fetch(uri.replace('wss', 'https'), {
@@ -136,16 +136,12 @@ async function connect(
     // in JavaScript, as opposed to returning it on to a client.
     socket.accept();
     target = socket;
-  } else {
-    const socket = new WebSocket(uri);
-    socket.binaryType = 'arraybuffer';
-    target = socket;
   }
 
   const queue = msgQueue<Buffer>();
   function ready(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (opts.cloudflareWorker) {
+      if (!('readyState' in target)) {
         resolve();
       }
       // if the socket is closing or closed, return end
