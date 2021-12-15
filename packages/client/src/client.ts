@@ -110,7 +110,7 @@ export async function create(options: CreateOptions = {}): Promise<Client> {
     parsePath,
     dataTransfer: dt,
     graphsync: exchange,
-    fetch: (path: string, init: any) =>
+    fetch: (path: string, init: any = {}) =>
       fetch(path, {headers: {...init.headers}, loaderFactory: dt, ...init}),
   };
 }
