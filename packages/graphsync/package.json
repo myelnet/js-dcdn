@@ -32,7 +32,7 @@
     "interface-store": "^2.0.1",
     "it-length-prefixed": "^5.0.3",
     "it-pipe": "^1.1.0",
-    "libp2p": "^0.33.0",
+    "libp2p": "^0.35.8",
     "multiformats": "^9.5.4",
     "peer-id": "^0.16.0",
     "protons": "^2.0.3",

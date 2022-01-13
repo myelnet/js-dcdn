@@ -2,7 +2,7 @@
 import filters from 'libp2p-websockets/src/filters';
 // @ts-ignore no types
 import Mplex from 'libp2p-mplex';
-import {Noise} from '@chainsafe/libp2p-noise/dist/src/noise';
+import {Noise} from '@chainsafe/libp2p-noise';
 import {create as createLibp2p} from 'libp2p';
 import {Graphsync} from '@dcdn/graphsync';
 import {
@@ -13,8 +13,10 @@ import {
   parsePath,
   Secp256k1Signer,
 } from '@dcdn/data-transfer';
+import type {Address} from '@dcdn/fil-address';
 import {Cachestore} from '@dcdn/cachestore';
 import {
+  getPeerID,
   ContentRouting,
   FetchRecordLoader,
   ContentRoutingInterface,
@@ -24,6 +26,8 @@ import type {CID} from 'multiformats';
 import PeerId from 'peer-id';
 import {Buffer} from 'buffer';
 import {fromString} from 'uint8arrays/from-string';
+import {Multiaddr} from 'multiaddr';
+import {BN} from 'bn.js';
 import {WSTransport} from './ws-transport';
 
 export interface Client {
@@ -40,6 +44,7 @@ type CreateOptions = {
   fetchRecordUri?: string;
   peerIdKey?: string;
   noiseSeed?: string;
+  filSeed?: string;
 };
 
 export async function create(options: CreateOptions = {}): Promise<Client> {
@@ -94,6 +99,12 @@ export async function create(options: CreateOptions = {}): Promise<Client> {
   exchange.start();
 
   const signer = new Secp256k1Signer();
+  let defaultAddress: Address | undefined;
+  if (options.filSeed) {
+    defaultAddress = signer.toPublic(options.filSeed);
+  } else {
+    defaultAddress = signer.genPrivate();
+  }
   const paychMgr = new PaychMgr({
     filRPC: new FilRPC('https://infura.myel.cloud'),
     signer,
@@ -103,6 +114,7 @@ export async function create(options: CreateOptions = {}): Promise<Client> {
     routing,
     network: libp2p,
     paychMgr,
+    defaultAddress,
   });
   dt.start();
   return {
@@ -110,7 +122,25 @@ export async function create(options: CreateOptions = {}): Promise<Client> {
     parsePath,
     dataTransfer: dt,
     graphsync: exchange,
-    fetch: (path: string, init: any = {}) =>
-      fetch(path, {headers: {...init.headers}, loaderFactory: dt, ...init}),
+    fetch: (path: string, init: any = {}) => {
+      if (init.provider) {
+        const {root} = parsePath(path);
+        const peerAddr = new Multiaddr(init.provider);
+        routing.provide(root, {
+          id: getPeerID(peerAddr),
+          multiaddrs: [peerAddr],
+          cid: root,
+          size: 0,
+          minPricePerByte: new BN(0),
+          maxPaymentInterval: 1 << 20,
+          maxPaymentIntervalIncrease: 1 << 20,
+        });
+      }
+      return fetch(path, {
+        headers: {...init.headers},
+        loaderFactory: dt,
+        ...init,
+      });
+    },
   };
 }

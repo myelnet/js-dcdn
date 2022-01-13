@@ -20,9 +20,16 @@ export class Controller {
           return;
         }
         const url = new URL(event.request.url);
+        if (url.host !== self.location.host) {
+          event.respondWith(fetch(event.request));
+          return;
+        }
+        // a peer address may be passed as ?peer=dns4/mypeer.name/443...
+        const params = url.searchParams;
+
         event.respondWith(
           this._client
-            .fetch(url.pathname, {headers: {}})
+            .fetch(url.pathname, {headers: {}, provider: params.get('peer')})
             .catch((err: Error) => {
               console.log(err);
               return fetch(event.request);
@@ -35,7 +42,12 @@ export class Controller {
 
   install(event: ExtendableEvent): Promise<void> {
     const promise = (async () => {
-      this._client = await create({fetchRecordUri: '/routing'});
+      const configRes = await caches.match('dcdn-config');
+      let config = {};
+      if (configRes) {
+        config = await configRes.json();
+      }
+      this._client = await create(config);
       return self.skipWaiting();
     })();
     event.waitUntil(promise);

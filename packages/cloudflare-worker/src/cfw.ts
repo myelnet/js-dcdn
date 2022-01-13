@@ -1,7 +1,5 @@
-import {BN} from 'bn.js';
 import {KVBlockstore} from './kv-blockstore';
-import {Multiaddr} from 'multiaddr';
-import {ContentRouting, getPeerID} from '@dcdn/routing';
+import {ContentRouting} from '@dcdn/routing';
 import {create, Client} from '@dcdn/client';
 
 declare const RECORDS: KVNamespace;
@@ -85,21 +83,7 @@ export async function handleRequest(request: Request): Promise<Response> {
   const client = await getOrCreateClient();
 
   const peer = params.get('peer');
-  if (peer) {
-    const {root} = client.parsePath(path);
-    const peerAddr = new Multiaddr(peer);
-    client.routing.provide(root, {
-      id: getPeerID(peerAddr),
-      multiaddrs: [peerAddr],
-      cid: root,
-      size: 0,
-      minPricePerByte: new BN(0),
-      maxPaymentInterval: 1 << 20,
-      maxPaymentIntervalIncrease: 1 << 20,
-    });
-  }
-
-  return client.fetch(path, {headers: corsHeaders});
+  return client.fetch(path, {headers: corsHeaders, provider: peer});
 }
 
 addEventListener('fetch', (event: FetchEvent) => {
