@@ -1,5 +1,14 @@
 {
-  "node": "14",
-  "packages": ["packages/portal"],
+  "node": "15",
+  "packages": [
+    "packages/portal", 
+    "packages/service-worker", 
+    "packages/client", 
+    "packages/data-transfer", 
+    "packages/graphsync", 
+    "packages/routing", 
+    "packages/fil-address", 
+    "packages/ipld-selectors"
+  ],
   "sandboxes": ["/.codesandbox/examples/fs-portal"]
 }
