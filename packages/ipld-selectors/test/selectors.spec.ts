@@ -5,7 +5,6 @@ import {
   parseContext,
   ExploreRecursive,
   LinkSystem,
-  AsyncLoader,
   walkBlocks,
   traversal,
   Node,
@@ -478,100 +477,6 @@ describe('selectors', () => {
     expect(order).to.equal(1);
   });
 
-  it('AsyncLoader w/ allSelector', async () => {
-    const bs = new MemoryBlockstore();
-
-    const leaf1 = await encode({
-      value: {
-        data: 'leaf1',
-      },
-      hasher: sha256,
-      codec: dagCBOR,
-    });
-    const leaf2 = await encode({
-      value: {
-        data: 'leaf2',
-      },
-      hasher: sha256,
-      codec: dagCBOR,
-    });
-    const parent = await encode({
-      value: {
-        children: [
-          {hash: leaf1.cid, name: '/parent/0/leaf1'},
-          {hash: leaf2.cid, name: '/parent/1/leaf2'},
-        ],
-        name: 'parent',
-      },
-      hasher: sha256,
-      codec: dagCBOR,
-    });
-
-    const sel = parseContext().parseSelector(allSelector) as ExploreRecursive;
-    expect(sel.limit.depth).to.equal(0);
-
-    const loader = new AsyncLoader(bs);
-
-    let order = 0;
-    await traversal({linkLoader: loader}).walkAdv(
-      parent.value,
-      sel,
-      (progress, node: any) => {
-        switch (order) {
-          case 0:
-            expect(node).to.equal(parent.value);
-            break;
-          case 1:
-            // @ts-ignore
-            expect(node).to.equal(parent.value.children);
-            break;
-          case 2:
-            // @ts-ignore
-            expect(node).to.equal(parent.value.children[0]);
-
-            bs.put(leaf1.cid, leaf1.bytes).then(() => loader.push(leaf1));
-            break;
-          case 3:
-            expect(node).to.equal(leaf1.value);
-            break;
-          case 4:
-            // @ts-ignore
-            expect(node).to.equal(leaf1.value.data);
-            break;
-          case 5:
-            // @ts-ignore
-            expect(node).to.equal(parent.value.children[0].name);
-            break;
-          case 6:
-            // @ts-ignore
-            expect(node).to.equal(parent.value.children[1]);
-            bs.put(leaf2.cid, leaf2.bytes).then(() => loader.push(leaf2));
-            break;
-          case 7:
-            expect(node).to.equal(leaf2.value);
-            break;
-          case 8:
-            // @ts-ignore
-            expect(node).to.equal(leaf2.value.data);
-            break;
-          case 9:
-            // @ts-ignore
-            expect(node).to.equal(parent.value.children[1].name);
-            break;
-          case 10:
-            // @ts-ignore
-            expect(node).to.equal(parent.value.name);
-            break;
-          default:
-            throw new Error('unexpected node for index: ' + order);
-        }
-        order++;
-      }
-    );
-
-    expect(order).to.equal(11);
-  });
-
   it('walk blocks', async () => {
     const blocks = new MemoryBlockstore();
     const leaf1 = await encode({
@@ -582,6 +487,7 @@ describe('selectors', () => {
       hasher: sha256,
       codec: dagCBOR,
     });
+    await blocks.put(leaf1.cid, leaf1.bytes);
     const leaf2 = await encode({
       value: {
         name: 'leaf2',
@@ -590,6 +496,7 @@ describe('selectors', () => {
       hasher: sha256,
       codec: dagCBOR,
     });
+    await blocks.put(leaf2.cid, leaf2.bytes);
     const parent = await encode({
       value: {
         children: [leaf1.cid, leaf2.cid],
@@ -599,11 +506,13 @@ describe('selectors', () => {
       hasher: sha256,
       codec: dagCBOR,
     });
+    await blocks.put(parent.cid, parent.bytes);
     const lister = await encode({
       value: [parent.cid, leaf1.cid, leaf2.cid],
       hasher: sha256,
       codec: dagCBOR,
     });
+    await blocks.put(lister.cid, lister.bytes);
     const grandparent = await encode({
       value: [
         {name: 'parent', link: parent.cid},
@@ -612,13 +521,9 @@ describe('selectors', () => {
       hasher: sha256,
       codec: dagCBOR,
     });
+    await blocks.put(grandparent.cid, grandparent.bytes);
 
-    const source = new AsyncLoader(blocks);
-    source.push(grandparent);
-    source.push(parent);
-    source.push(leaf1);
-    source.push(leaf2);
-    source.push(lister);
+    const source = new LinkSystem(blocks);
 
     const sel = parseContext().parseSelector(allSelector) as ExploreRecursive;
     expect(sel.limit.depth).to.equal(0);

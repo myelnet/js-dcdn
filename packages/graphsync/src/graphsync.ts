@@ -7,15 +7,11 @@ import protons from 'protons';
 // @ts-ignore (no types)
 import vd from 'varint-decoder';
 import blakejs from 'blakejs';
-import {
-  decoderFor,
-  AsyncLoader,
-  SelectorNode,
-  Blockstore,
-} from '@dcdn/ipld-selectors';
+import {decoderFor, SelectorNode, Blockstore} from '@dcdn/ipld-selectors';
 import lp from 'it-length-prefixed';
 import {sha256} from 'multiformats/hashes/sha2';
 import {pipe} from 'it-pipe';
+import {AsyncLoader} from './async-loader';
 import type BufferList from 'bl/BufferList';
 import type PeerId from 'peer-id';
 import type {HandlerProps} from 'libp2p';
