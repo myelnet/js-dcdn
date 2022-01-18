@@ -1,0 +1,24 @@
+{
+  "name": "fs-portal",
+  "version": "1.0.0",
+  "description": "TypeScript example starter project with fs portal",
+  "main": "index.html",
+  "scripts": {
+    "start": "parcel index.html --open",
+    "build": "parcel build index.html"
+  },
+  "dependencies": {
+    "@dcdn/fs-portal": "latest",
+    "@dcdn/service-worker": "latest",
+    "parcel-bundler": "^1.6.1",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2"
+  },
+  "devDependencies": {
+    "typescript": "4.4.4"
+  },
+  "resolutions": {
+    "@babel/preset-env": "7.13.8"
+  },
+  "keywords": ["typescript", "dcdn"]
+}

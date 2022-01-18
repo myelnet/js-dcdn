@@ -1,5 +1,5 @@
 {
   "node": "14",
-  "packages": ["packages/myel-http-client"],
-  "sandboxes": ["/examples/tx-builder"]
+  "packages": ["packages/portal"],
+  "sandboxes": ["/.codesandbox/examples/fs-portal"]
 }
