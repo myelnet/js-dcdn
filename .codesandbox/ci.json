@@ -8,7 +8,8 @@
     "packages/graphsync", 
     "packages/routing", 
     "packages/fil-address", 
-    "packages/ipld-selectors"
+    "packages/ipld-selectors",
+    "packages/cachestore"
   ],
   "sandboxes": ["/.codesandbox/examples/fs-portal"]
 }
