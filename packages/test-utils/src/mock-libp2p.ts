@@ -108,7 +108,7 @@ export class MockLibp2p {
             sink: drain,
           }
         : pair();
-    stream.close = () => stream.sink(new Uint8Array(0));
+    stream.close = () => {};
     stream.id = id;
 
     const conn = {
