@@ -1,5 +1,15 @@
 {
-  "node": "14",
-  "packages": ["packages/myel-http-client"],
-  "sandboxes": ["/examples/tx-builder"]
+  "node": "16",
+  "packages": [
+    "packages/portal", 
+    "packages/service-worker", 
+    "packages/client", 
+    "packages/data-transfer", 
+    "packages/graphsync", 
+    "packages/routing", 
+    "packages/fil-address", 
+    "packages/ipld-selectors",
+    "packages/cachestore"
+  ],
+  "sandboxes": ["/.codesandbox/examples/fs-portal"]
 }

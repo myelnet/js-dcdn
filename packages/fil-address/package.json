@@ -1,0 +1,28 @@
+{
+  "name": "@dcdn/fil-address",
+  "version": "0.0.1",
+  "description": "Filecoin address interface and utility methods",
+  "main": "dist/src/index.js",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "author": "Myel <thomas@myel.dev>",
+  "license": "MIT",
+  "scripts": {
+    "build": "aegir build",
+    "test": "aegir test"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.0",
+    "aegir": "^36.0.2"
+  },
+  "dependencies": {
+    "blakejs": "^1.1.1",
+    "bn.js": "^5.2.0",
+    "buffer": "^6.0.3",
+    "multiformats": "^9.5.4",
+    "uint8arrays": "^3.0.0"
+  },
+  "types": "dist/src/index.d.ts"
+}

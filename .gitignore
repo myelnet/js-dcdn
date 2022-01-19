@@ -4,4 +4,7 @@ build/
 *.swp
 *.swo
 dist
-yarn-error.log
+package-lock.json
+tsconfig-types.aegir.json
+yarn.lock
+**/*.log

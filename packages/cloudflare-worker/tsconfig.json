@@ -1,0 +1,17 @@
+{
+  "extends": "aegir/src/config/tsconfig.aegir.json",
+  "compilerOptions": {
+     "types": [
+      "@cloudflare/workers-types"
+     ],
+    "outDir": "dist"
+  },
+  "include": [
+    "**/src/**/*.ts",
+    "**/test/**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}

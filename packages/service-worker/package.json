@@ -1,0 +1,22 @@
+{
+  "name": "@dcdn/service-worker",
+  "version": "0.0.1",
+  "description": "Service worker hooks for fetching content from a decentralized network of cache providers",
+  "main": "dist/src/index.js",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "author": "Myel <thomas@myel.dev>",
+  "license": "MIT",
+  "scripts": {
+    "build": "aegir build"
+  },
+  "devDependencies": {
+    "aegir": "^36.0.2"
+  },
+  "dependencies": {
+    "@dcdn/client": "^0.0.1"
+  },
+  "types": "dist/src/index.d.ts"
+}
