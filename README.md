@@ -1,4 +1,4 @@
-# myel.js
+# js-dcdn
 
 > JS Client for interacting with the Myel CDN.
 
@@ -9,15 +9,15 @@ is still highly experimental and API may still change at any moment.
 
 As an NPM package
 ```sh
-npm install myel-client
+npm install @dcdn/client
 ```
 
 As a service worker
-- Add the sw.js source to your project
+- Install `@dcdn/service-worker` in your project and server `@dcdn/service-worker/dist/index.min.js` from your origin.
 - Register the service worker:
 ```js
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js')
+  navigator.serviceWorker.register('/sw.js')
   .then((reg) => {
     // registration worked
     console.log('Registration succeeded');
@@ -28,7 +28,7 @@ if ('serviceWorker' in navigator) {
 }
 ```
 
-As a [Cloudflare worker](/dists/src/cfw.ts)
+As a [Cloudflare worker](/packages/cloudflare-worker)
 - Make sure you have wrangler installed and a [Cloudflare workers account](https://dash.cloudflare.com/sign-up/workers)
 ```sh
 npm install -g @cloudflare/wrangler
@@ -51,32 +51,10 @@ When using from a worker you can directly request the content using IPFS paths:
 
 When using the client directly in your application (We recommend using in a worker so as not to block the main thread).
 ```js
-import Websockets from 'libp2p-websockets';
-import filters from 'libp2p-websockets/src/filters';
-import {Noise} from 'libp2p-noise/dist/src/noise';
-import Mplex from 'libp2p-mplex';
-import {PreloadController, CacheDatastore, BlockstoreAdapter} from 'myel-client';
+import {create} from '@dcdn/client'
 
 (async () => {
-  const libp2p = await Libp2p.create({
-    modules: {
-      transport: [Websockets],
-      connEncryption: [new Noise()],
-      streamMuxer: [Mplex],
-    },
-  })
-  await libp2p.start()
-
-  const ds = new CacheDatastore('/myel-client/blocks')
-  await ds.open()
-
-  const blocks = new BlockstoreAdapter(ds)
-
-  const client = new Client({
-    libp2p,
-    blocks,
-    rpc: new FilRPC('https://infura.myel.cloud'),
-  })
+  const client = await create()
 
   const myImage = document.querySelector('img');
 

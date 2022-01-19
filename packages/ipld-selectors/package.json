@@ -11,7 +11,8 @@
   "license": "MIT",
   "scripts": {
     "build": "aegir build",
-    "test": "aegir test"
+    "test": "aegir test",
+    "check": "aegir check"
   },
   "devDependencies": {
     "aegir": "^36.0.2",
@@ -24,5 +25,8 @@
     "interface-store": "^2.0.1",
     "multiformats": "^9.5.4"
   },
-  "types": "dist/src/index.d.ts"
+  "types": "dist/src/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  }
 }
