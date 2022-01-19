@@ -11,7 +11,8 @@
   "license": "MIT",
   "scripts": {
     "build": "aegir build",
-    "test": "aegir test"
+    "test": "aegir test",
+    "check": "aegir check"
   },
   "devDependencies": {
     "@dcdn/test-utils": "^0.0.1",
@@ -33,10 +34,13 @@
     "it-length-prefixed": "^5.0.3",
     "it-pipe": "^1.1.0",
     "libp2p": "^0.35.8",
-    "multiformats": "^9.5.4",
+    "multiformats": "9.5.4",
     "peer-id": "^0.16.0",
     "protons": "^2.0.3",
     "varint-decoder": "^1.0.0"
   },
-  "types": "dist/src/index.d.ts"
+  "types": "dist/src/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  }
 }

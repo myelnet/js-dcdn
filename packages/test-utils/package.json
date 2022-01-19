@@ -10,7 +10,8 @@
   "author": "Myel <thomas@myel.dev>",
   "license": "MIT",
   "scripts": {
-    "build": "aegir build && cp src/fixtures/*.txt dist/src/fixtures"
+    "build": "aegir build && cp src/fixtures/*.txt dist/src/fixtures",
+    "check": "aegir check"
   },
   "devDependencies": {
     "@types/bl": "^5.0.1",
@@ -28,5 +29,8 @@
     "multiformats": "^9.4.7",
     "peer-id": "^0.16.0"
   },
-  "types": "dist/src/index.d.ts"
+  "types": "dist/src/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  }
 }
