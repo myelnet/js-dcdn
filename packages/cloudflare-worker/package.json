@@ -10,7 +10,8 @@
   "author": "Myel <thomas@myel.dev>",
   "license": "MIT",
   "scripts": {
-    "build": "aegir build"
+    "build": "aegir build",
+    "check": "aegir check"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^3.2.0",
@@ -23,5 +24,8 @@
     "interface-store": "^2.0.1",
     "multiformats": "^9.5.4"
   },
-  "types": "dist/src/index.d.ts"
+  "types": "dist/src/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  }
 }

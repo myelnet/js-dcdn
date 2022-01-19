@@ -10,7 +10,8 @@
   "author": "Myel <thomas@myel.dev>",
   "license": "MIT",
   "scripts": {
-    "build": "aegir build"
+    "build": "aegir build",
+    "check": "aegir check"
   },
   "devDependencies": {
     "aegir": "^36.0.2"
@@ -18,5 +19,8 @@
   "dependencies": {
     "@dcdn/client": "^0.0.1"
   },
-  "types": "dist/src/index.d.ts"
+  "types": "dist/src/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  }
 }
