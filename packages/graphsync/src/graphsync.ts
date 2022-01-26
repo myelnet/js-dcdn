@@ -128,7 +128,7 @@ const blake2b256 = hasherFrom({
 
 export async function decodeBlock(
   block: GraphsyncBlock,
-  hashers: {[key: number]: hasher.MultihashHasher}
+  hashers: {[key: number]: hasher.MultihashHasher<any>}
 ): Promise<Block<any>> {
   const values = vd(block.prefix);
   const cidVersion = values[0];
@@ -157,7 +157,7 @@ export class Graphsync {
   network: ProtocolDialer & ProtocolHandlerRegistrar;
   blocks: Blockstore;
   requests: Map<number, GraphsyncRequest> = new Map();
-  hashers: {[key: number]: hasher.MultihashHasher} = {
+  hashers: {[key: number]: hasher.MultihashHasher<any>} = {
     [blake2b256.code]: blake2b256,
     [sha256.code]: sha256,
   };
