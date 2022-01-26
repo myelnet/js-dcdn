@@ -11,5 +11,5 @@
     "packages/ipld-selectors",
     "packages/cachestore"
   ],
-  "sandboxes": ["/.codesandbox/examples/fs-portal"]
+  "sandboxes": ["/.codesandbox/examples/fs-portal-cra"]
 }
