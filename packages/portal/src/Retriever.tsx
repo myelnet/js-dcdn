@@ -1,7 +1,7 @@
 import * as React from 'react';
 import type {Content} from './Uploader';
 import PeerSelecter from './PeerSelecter';
-import {peerAddr} from './peers';
+import {Peer, peerAddr} from './peers';
 import {Chevron, CloudDown} from './icons';
 import Spinner from './Spinner';
 import {humanFileSize} from './utils';
@@ -34,10 +34,21 @@ function ContentRow({hash, size, peers, onImport, workerUrl}: ContentRowProps) {
   const openSelector = () => {
     setPOpen(true);
   };
+  const formatUrl = (path?: string, peer?: Peer): string => {
+    let base = workerUrl + '/' + hash;
+    if (path) {
+      base += '/' + path;
+    }
+    if (peer) {
+      base += '?peer=' + peerAddr(peer);
+    }
+    return base;
+  };
+
   const toggleTree = () => {
     if (!tOpen && children.length === 0) {
       setPending(true);
-      fetch(workerUrl + hash + '?peer=' + peerAddr(peer), {
+      fetch(formatUrl(undefined, peer), {
         headers: {
           Accept: 'application/json',
         },
@@ -72,15 +83,7 @@ function ContentRow({hash, size, peers, onImport, workerUrl}: ContentRowProps) {
               <li data-dcdn-content-row="" key={child.hash + i}>
                 <a
                   data-dcdn-content-item-row=""
-                  href={
-                    workerUrl +
-                    '/' +
-                    hash +
-                    '/' +
-                    child.name +
-                    '?peer=' +
-                    peerAddr(peer)
-                  }
+                  href={formatUrl(child.name, peer)}
                   download
                 >
                   <div data-dcdn-content-row-heading="">
