@@ -1,1 +1,4 @@
-import '@dcdn/service-worker/dist/index.min.js';
+import {Controller} from '@dcdn/service-worker/src/controller';
+
+const ctrl = new Controller();
+ctrl.start();
